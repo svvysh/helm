@@ -1,0 +1,11 @@
+{
+  "id": "spec-00-foundation",
+  "name": "Go module and CLI skeleton",
+  "status": "todo",
+  "dependsOn": [],
+  "notes": "",
+  "acceptanceCommands": [
+    "go test ./...",
+    "go vet ./..."
+  ]
+}

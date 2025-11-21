@@ -1,0 +1,16 @@
+{
+  "id": "spec-04-run-command",
+  "name": "run command TUI and spec execution",
+  "status": "todo",
+  "dependsOn": [
+    "spec-00-foundation",
+    "spec-01-config-metadata",
+    "spec-02-scaffold-command",
+    "spec-03-implement-runner"
+  ],
+  "notes": "",
+  "acceptanceCommands": [
+    "go test ./...",
+    "go vet ./..."
+  ]
+}

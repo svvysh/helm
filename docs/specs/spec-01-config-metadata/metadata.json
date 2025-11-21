@@ -1,0 +1,13 @@
+{
+  "id": "spec-01-config-metadata",
+  "name": "Settings, metadata, and spec discovery",
+  "status": "todo",
+  "dependsOn": [
+    "spec-00-foundation"
+  ],
+  "notes": "",
+  "acceptanceCommands": [
+    "go test ./...",
+    "go vet ./..."
+  ]
+}

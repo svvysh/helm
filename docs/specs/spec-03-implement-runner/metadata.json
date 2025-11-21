@@ -1,0 +1,15 @@
+{
+  "id": "spec-03-implement-runner",
+  "name": "implement-spec runner with worker/verifier loop",
+  "status": "todo",
+  "dependsOn": [
+    "spec-00-foundation",
+    "spec-01-config-metadata",
+    "spec-02-scaffold-command"
+  ],
+  "notes": "",
+  "acceptanceCommands": [
+    "go test ./...",
+    "go vet ./..."
+  ]
+}

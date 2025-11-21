@@ -1,0 +1,14 @@
+{
+  "id": "spec-02-scaffold-command",
+  "name": "scaffold command and initial specs layout",
+  "status": "todo",
+  "dependsOn": [
+    "spec-00-foundation",
+    "spec-01-config-metadata"
+  ],
+  "notes": "",
+  "acceptanceCommands": [
+    "go test ./...",
+    "go vet ./..."
+  ]
+}
