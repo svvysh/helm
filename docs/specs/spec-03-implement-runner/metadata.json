@@ -1,14 +1,15 @@
 {
   "id": "spec-03-implement-runner",
   "name": "implement-spec runner with worker/verifier loop",
-  "status": "todo",
+  "status": "done",
   "dependsOn": [
     "spec-00-foundation",
     "spec-01-config-metadata",
     "spec-02-scaffold-command"
   ],
-  "notes": "",
+  "notes": "\n[2025-11-22T10:17:22.780Z] attempt 1 status=ok: ok",
   "acceptanceCommands": [
     "make all"
-  ]
+  ],
+  "lastRun": "2025-11-22T10:17:22.780Z"
 }

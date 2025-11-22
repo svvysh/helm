@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/polarzero/helm/internal/config"
+	"github.com/polarzero/helm/internal/runner"
 	scaffoldtui "github.com/polarzero/helm/internal/tui/scaffold"
 )
 
@@ -92,14 +94,71 @@ func newScaffoldCmd() *cobra.Command {
 }
 
 func newRunCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "run",
+	var modeOverride string
+
+	cmd := &cobra.Command{
+		Use:   "run <spec-dir>",
 		Short: "Run the spec workflow",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "run not implemented yet")
-			return nil
+			settings, err := settingsFromContext(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			root, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("determine working directory: %w", err)
+			}
+
+			maxAttempts := settings.DefaultMaxAttempts
+			if env := os.Getenv("MAX_ATTEMPTS"); env != "" {
+				value, convErr := strconv.Atoi(env)
+				if convErr != nil || value <= 0 {
+					return fmt.Errorf("invalid MAX_ATTEMPTS value %q", env)
+				}
+				maxAttempts = value
+			}
+
+			mode := settings.Mode
+			if modeOverride != "" {
+				switch config.Mode(modeOverride) {
+				case config.ModeStrict, config.ModeParallel:
+					mode = config.Mode(modeOverride)
+				default:
+					return fmt.Errorf("invalid mode %q: must be strict or parallel", modeOverride)
+				}
+			}
+
+			workerModel := os.Getenv("CODEX_MODEL_IMPL")
+			if workerModel == "" {
+				workerModel = settings.CodexModelRunImpl
+			}
+			verifierModel := os.Getenv("CODEX_MODEL_VER")
+			if verifierModel == "" {
+				verifierModel = settings.CodexModelRunVer
+			}
+
+			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
+
+			r := &runner.Runner{
+				Root:                      root,
+				SpecsRoot:                 specsRoot,
+				Mode:                      mode,
+				MaxAttempts:               maxAttempts,
+				WorkerModel:               workerModel,
+				VerifierModel:             verifierModel,
+				DefaultAcceptanceCommands: settings.AcceptanceCommands,
+				Stdout:                    cmd.OutOrStdout(),
+				Stderr:                    cmd.ErrOrStderr(),
+			}
+
+			return r.Run(cmd.Context(), args[0])
 		},
 	}
+
+	cmd.Flags().StringVar(&modeOverride, "mode", "", "Override run mode (strict or parallel)")
+	return cmd
 }
 
 func newSpecCmd() *cobra.Command {
@@ -131,4 +190,16 @@ func isScaffoldCommand(cmd *cobra.Command) bool {
 		}
 	}
 	return false
+}
+
+func settingsFromContext(ctx context.Context) (*config.Settings, error) {
+	if ctx == nil {
+		return nil, errors.New("context missing CLI settings")
+	}
+	val := ctx.Value(settingsContextKey)
+	settings, ok := val.(*config.Settings)
+	if !ok || settings == nil {
+		return nil, errors.New("CLI settings not initialized; run from a Helm workspace")
+	}
+	return settings, nil
 }
