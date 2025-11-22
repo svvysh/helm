@@ -5,12 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/polarzero/helm/internal/config"
-	"github.com/polarzero/helm/internal/runner"
+	runtui "github.com/polarzero/helm/internal/tui/run"
 	scaffoldtui "github.com/polarzero/helm/internal/tui/scaffold"
 	settingsui "github.com/polarzero/helm/internal/tui/settings"
 )
@@ -118,12 +117,10 @@ func newSettingsCmd() *cobra.Command {
 }
 
 func newRunCmd() *cobra.Command {
-	var modeOverride string
-
 	cmd := &cobra.Command{
-		Use:   "run <spec-dir>",
-		Short: "Run the spec workflow",
-		Args:  cobra.ExactArgs(1),
+		Use:   "run",
+		Short: "Run specs via an interactive TUI",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			settings, err := settingsFromContext(cmd.Context())
 			if err != nil {
@@ -135,60 +132,14 @@ func newRunCmd() *cobra.Command {
 				return fmt.Errorf("determine working directory: %w", err)
 			}
 
-			maxAttempts := settings.DefaultMaxAttempts
-			if env := os.Getenv("MAX_ATTEMPTS"); env != "" {
-				value, convErr := strconv.Atoi(env)
-				if convErr != nil || value <= 0 {
-					return fmt.Errorf("invalid MAX_ATTEMPTS value %q", env)
-				}
-				maxAttempts = value
-			}
-
-			mode := settings.Mode
-			if modeOverride != "" {
-				switch config.Mode(modeOverride) {
-				case config.ModeStrict, config.ModeParallel:
-					mode = config.Mode(modeOverride)
-				default:
-					return fmt.Errorf("invalid mode %q: must be strict or parallel", modeOverride)
-				}
-			}
-
-			workerChoice := settings.CodexRunImpl
-			if model := os.Getenv("CODEX_MODEL_IMPL"); model != "" {
-				workerChoice.Model = model
-			}
-			if r := os.Getenv("CODEX_REASONING_IMPL"); r != "" {
-				workerChoice.Reasoning = r
-			}
-
-			verifierChoice := settings.CodexRunVer
-			if model := os.Getenv("CODEX_MODEL_VER"); model != "" {
-				verifierChoice.Model = model
-			}
-			if r := os.Getenv("CODEX_REASONING_VER"); r != "" {
-				verifierChoice.Reasoning = r
-			}
-
 			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
-
-			r := &runner.Runner{
-				Root:                      root,
-				SpecsRoot:                 specsRoot,
-				Mode:                      mode,
-				MaxAttempts:               maxAttempts,
-				WorkerChoice:              workerChoice,
-				VerifierChoice:            verifierChoice,
-				DefaultAcceptanceCommands: settings.AcceptanceCommands,
-				Stdout:                    cmd.OutOrStdout(),
-				Stderr:                    cmd.ErrOrStderr(),
-			}
-
-			return r.Run(cmd.Context(), args[0])
+			return runtui.Run(runtui.Options{
+				Root:      root,
+				SpecsRoot: specsRoot,
+				Settings:  settings,
+			})
 		},
 	}
-
-	cmd.Flags().StringVar(&modeOverride, "mode", "", "Override run mode (strict or parallel)")
 	return cmd
 }
 

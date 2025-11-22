@@ -1,15 +1,16 @@
 {
   "id": "spec-04-run-command",
   "name": "run command TUI and spec execution",
-  "status": "todo",
+  "status": "done",
   "dependsOn": [
     "spec-00-foundation",
     "spec-01-config-metadata",
     "spec-02-scaffold-command",
     "spec-03-implement-runner"
   ],
-  "notes": "",
+  "notes": "\n[2025-11-22T11:46:51.324Z] attempt 1 status=ok: ok",
   "acceptanceCommands": [
     "make all"
-  ]
+  ],
+  "lastRun": "2025-11-22T11:46:51.324Z"
 }
