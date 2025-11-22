@@ -1,111 +1,78 @@
-# spec-05-spec-splitting-command — `spec` command for splitting large specs
+# spec-05-spec-splitting-command — Breakdown/`spec` pane
 
 ## Summary
 
-Implement the `helm spec` command and TUI flow that accepts a large, pasted product spec (or a file path), uses the `spec-splitting-guide.md` to instruct Codex, and generates multiple `spec-XX-*` folders with corresponding `SPEC.md`, `acceptance-checklist.md`, and `metadata.json` files.
+Implement the Breakdown pane of the TUI (accessible from the home navigation) and the `helm spec` entrypoint that runs the same flow directly without opening the shell. The pane accepts a large spec (or file), asks Codex for a split plan, and generates `spec-*` folders under the configured specs root.
 
 ## Goals
 
-- Provide an interactive `helm spec` TUI to accept a large spec input.
-- Use Codex to propose a machine-readable plan for splitting the spec into multiple smaller specs.
-- Generate spec folders under `docs/specs` according to the plan.
-- Seed each spec folder with acceptance checklists and metadata (status `todo`, dependencies set).
+- Provide an interactive Bubble Tea flow for pasting a large spec or pointing to a file.
+- Use the `spec-splitting-guide.md` plus repo config acceptance commands to ask Codex for a JSON split plan.
+- Generate spec folders under `RepoConfig.SpecsRoot` with metadata, acceptance checklists, and placeholder reports.
+- Integrate with the TUI shell so navigation returns to Run/Status panes when done.
 
 ## Non-Goals
 
-- No support for editing existing specs; this command is for creating new ones.
-- No “undo” or deletion of generated specs (for now).
+- Editing existing specs or deleting generated specs.
+- Running specs; execution remains in the Run pane.
 
 ## Detailed Requirements
 
-1. **TUI Model for `spec`**
-   - Implement a Bubble Tea model in `internal/tui/specsplit` with phases:
-     1. Intro:
-        - Explain what the command does.
-     2. Input:
-        - Allow user to either:
-          - Paste a large spec into a multi-line text area, or
-          - Provide a file path (e.g., via flag) that is read at startup.
-     3. Preview:
-        - Show the beginning (e.g., first 40–60 lines) of the spec.
-        - Ask the user to confirm before splitting.
-     4. Running:
-        - Show a progress view while the Codex request is in flight.
-     5. Done:
-        - Show a summary table of created specs: ID, name, dependencies.
+1. **Entry & Navigation**
+- `helm spec` runs the Breakdown flow directly (without the multi-pane shell). From the home navigation (opened via bare `helm`), selecting Breakdown mounts this pane; `q` returns to home.
 
-2. **Codex Split Plan**
-   - Build a prompt using:
-     - The contents of `spec-splitting-guide.md`.
-     - The raw pasted spec.
-     - The default acceptance commands from `.cli-settings.json`.
-   - Ask Codex to respond with a JSON object conforming to:
+2. **Input Flow**
+   - Steps inside the pane:
+     1. Intro text explaining what Breakdown does.
+     2. Input step allowing either:
+        - Multi-line paste of a spec, or
+        - Providing a file path (via flag or prompt) read at startup.
+     3. Preview of the first ~50 lines with a confirmation prompt.
+     4. Progress view while the Codex request runs.
+     5. Completion view summarizing created specs (ID, name, deps) and offering a button to jump to the Run pane.
+   - Keyboard: Up/Down or tab between controls, enter to confirm, esc/ctrl+c to cancel back to home.
+
+3. **Codex Split Plan**
+   - Build the prompt using:
+     - `spec-splitting-guide.md` from the specs root.
+     - The raw pasted/file content.
+     - Acceptance commands from `RepoConfig.AcceptanceCommands`.
+   - Ask Codex to return JSON of the form:
 
      ```json
-     {
-       "specs": [
-         {
-           "index": 0,
-           "idSuffix": "foundation",
-           "name": "Go module and CLI skeleton",
-           "dependsOn": [],
-           "acceptanceCriteria": [
-             "CLI binary exposes scaffold/run/spec/status subcommands",
-             "go test ./... passes"
-           ]
-         }
-       ]
-     }
+     { "specs": [ { "index": 0, "idSuffix": "foundation", "name": "Go module and CLI skeleton", "dependsOn": [], "acceptanceCriteria": ["..."] } ] }
      ```
 
-3. **Spec Folder Generation**
-   - For each entry in the JSON plan:
-     - Compute a spec ID: `spec-%02d-%s` where `%02d` is `index` and `%s` is `idSuffix` (normalized to a safe directory name).
-     - Create a directory under `docs/specs` with that ID.
-     - Create:
-       - `SPEC.md`:
-         - Include the spec name, a summary, and the provided acceptance criteria.
-         - Reference any dependencies in a `## Depends on` section.
-       - `acceptance-checklist.md`:
-         - Include required acceptance commands from `.cli-settings.json`.
-         - Expand spec-specific acceptance criteria into checkboxes.
-       - `metadata.json`:
-         - `id`: the folder ID.
-         - `name`: the spec name.
-         - `status`: `"todo"`.
-         - `dependsOn`: the list of spec IDs/equivalents from the JSON plan.
-         - `acceptanceCommands`: from `.cli-settings.json`.
-       - `implementation-report.md`:
-         - A simple placeholder text.
+4. **Spec Folder Generation**
+   - For each plan entry, create `spec-%02d-%s` under `SpecsRoot` (respecting the repo-configured root, default `specs/`).
+   - Write:
+     - `SPEC.md` with summary and `## Depends on` section.
+     - `acceptance-checklist.md` combining acceptance commands and criteria.
+     - `metadata.json` with `status="todo"`, `dependsOn` from the plan, and acceptance commands from config.
+     - `implementation-report.md` placeholder.
+   - Do not overwrite existing spec folders without explicit confirmation; skip and report any collisions.
 
-4. **Cross-Links**
-   - In each generated `SPEC.md`, add a `## Depends on` section that lists dependencies by ID and (if available) name.
-
-5. **Safety & Idempotency**
-   - If a target spec folder already exists:
-     - Prompt the user before overwriting, or
-     - Use a different ID (e.g., increment the index) and warn the user.
-   - Avoid silently overwriting existing human-authored specs.
+5. **Completion State**
+   - Show a summary table of created specs (ID, name, deps) and allow pressing a key/button to jump directly to the Run pane (keeping the shell running) or return home.
 
 ## Acceptance Criteria
 
 - `go test ./...` and `go vet ./...` succeed.
-- Running `go run ./cmd/helm spec`:
-  - Shows a TUI that allows pasting a large spec.
-  - After confirmation, triggers a Codex request for a split plan.
-- When Codex returns a valid JSON split plan:
-  - New spec folders are created under `docs/specs`.
-  - Each folder contains `SPEC.md`, `acceptance-checklist.md`, `metadata.json`, and `implementation-report.md`.
-  - Dependencies between specs are encoded in both `metadata.json.dependsOn` and the `## Depends on` section of `SPEC.md`.
+- Running `go run ./cmd/helm split` in an initialized temp repo opens the Breakdown pane.
+- Past­ing a sample spec or pointing to a file triggers a Codex request and generates spec folders under the configured `specsRoot` when the plan is valid.
+- Generated folders contain `SPEC.md`, `acceptance-checklist.md`, `metadata.json`, and `implementation-report.md` with correct IDs, names, and dependencies.
+- Existing spec folders are not overwritten without confirmation; collisions are reported in the completion view.
+- Returning from the completion view lands on home (or Run if the “jump to Run” action was chosen).
 
 ## Implementation Notes
 
 - Codex calls for splitting should use a read-only sandbox (`--sandbox read-only`).
-- For testing without real Codex access, consider a dev flag to read a split plan from a local JSON file.
-- Testing convention: generate split output in a temp specs root (e.g., `t.TempDir()/specs-test`) rather than `docs/specs/` so automated runs don’t alter the tracked spec tree.
+- Provide a dev flag to load a split plan from a local JSON file for tests.
+- Generate into a temp specs root during automated tests so the tracked `docs/specs/` tree is untouched.
 
 ## Depends on
 
 - spec-00-foundation — Go module and CLI skeleton
-- spec-01-config-metadata — Settings, metadata, and spec discovery
-- spec-02-scaffold-command — scaffold command and initial specs layout
+- spec-01-config-metadata — Repo config, metadata, and spec discovery
+- spec-02-scaffold-command — Scaffold flow inside the TUI
+- spec-04-run-command — TUI shell navigation

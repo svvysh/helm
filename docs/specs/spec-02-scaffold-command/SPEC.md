@@ -1,141 +1,72 @@
-# spec-02-scaffold-command — `scaffold` command and initial docs/specs layout
+# spec-02-scaffold-command — Scaffold flow inside the TUI
 
 ## Summary
 
-Implement the `helm scaffold` command and associated Bubble Tea flow that creates the `docs/specs/` workspace, templates, and an example spec. This command is the entrypoint for bootstrapping the spec runner in any project.
-
-In this repository, it should be capable of recreating a structure similar to the current `docs/specs/` contents (with templates, spec-splitting guide, and example spec).
+Implement the initialization flow that runs when a repo is not yet set up for Helm. The flow lives inside the TUI and is triggered on first open (or via `helm scaffold`). It asks for confirmation to scaffold the configured specs root, writes starter templates, and marks the repo as initialized in `helm.config.json`.
 
 ## Goals
 
-- Implement an interactive TUI for `helm scaffold` using Bubble Tea.
-- Ask the user whether the workflow should be **parallel** or **strict**.
-- Ask the user for default acceptance commands (e.g., `go test ./...`).
-- Create the `docs/specs/` directory and the following files:
-  - `README.md`
-  - `.cli-settings.json`
-  - `implement.prompt-template.md`
-  - `review.prompt-template.md`
-  - `implement-spec.mjs`
-  - `spec-splitting-guide.md`
-  - `spec-00-example/` example spec folder.
-- Ensure the command is idempotent and safe to run on an existing project.
+- Detect an uninitialized repo using `helm.config.json` and the presence of the specs root directory.
+- Present a minimal first-run TUI gate that only offers to scaffold the specs root (default `specs/`).
+- Create the specs workspace (templates, runner script, example spec) without clobbering existing files.
+- Persist `Initialized=true` and the chosen specs root back to `helm.config.json`, with guidance on how to re-run scaffold (delete the config file).
 
 ## Non-Goals
 
-- No integration with Codex beyond writing the runner script file (`implement-spec.mjs`).
-- No spec splitting or `run`/`status` TUI behavior.
-- No opinionated project-specific content in templates (keep them generic).
+- No multi-pane home menu here; this flow runs **before** the home panes unlock.
+- No spec splitting, run, or status behavior.
+- No Codex calls beyond writing prompt templates.
 
 ## Detailed Requirements
 
-1. **TUI Model for `scaffold`**
-   - Implement a Bubble Tea model for the `scaffold` flow with the following steps:
-     1. Intro screen explaining what will be created.
-     2. Mode selection: “Run tasks in parallel?” (yes = parallel, no = strict).
-     3. Acceptance commands input:
-        - Allow the user to enter one command per line.
-        - Empty input + enter finishes the list.
-     4. Optional settings:
-        - Specs root path (default: `docs/specs`).
-        - (Optional) Whether to generate a sample dependency graph among example specs.
-     5. Confirmation screen summarizing:
-        - Selected mode.
-        - Specs root.
-        - Acceptance commands.
-     6. Running/progress state.
-     7. Completion screen.
+1. **Entry Conditions**
+   - The TUI starts by loading `helm.config.json` (from spec-01).
+   - If `NeedsInitialization` is true, the only visible screen is an initialization prompt. Otherwise control passes to the home menu (spec-04).
 
-   - Provide keyboard shortcuts:
-     - Up/Down or tab to move between choices.
-     - Enter to confirm steps.
-     - Escape or ctrl+c to cancel.
+2. **Initialization Prompt**
+   - Show text similar to: "Helm has not been initialized in this repo. Scaffold `<specsRoot>` now?"
+   - Default `specsRoot` comes from config (default `specs/` if unset). Allow the user to edit it before confirming.
+   - Buttons: `Yes, scaffold` and `Quit`. If the user cancels, exit with a helpful message.
 
-2. **Filesystem Creation**
-   - Given the collected answers, create `SpecsRoot` (e.g., `docs/specs`), ensuring:
-     - Intermediate directories are created as needed.
-     - Existing files are not blindly overwritten:
-       - If a file already exists, either:
-         - Leave it untouched and note it in the final summary, or
-         - Offer a `--force` flag in the future (but not required in this spec).
+3. **Scaffold Steps (upon confirmation)**
+   - Create the specs root directory (and parents) if missing.
+   - Write or keep the following files relative to `SpecsRoot`:
+     - `README.md`
+     - `.cli-settings.json` (legacy defaults derived from repo config values)
+     - `implement.prompt-template.md`
+     - `review.prompt-template.md`
+     - `implement-spec.mjs`
+     - `spec-splitting-guide.md`
+     - `spec-00-example/` folder with `SPEC.md`, `acceptance-checklist.md`, `metadata.json`, `implementation-report.md`.
+   - Do **not** overwrite files that already exist; instead surface a summary of skipped files. Overwrite policy can be revisited later but is not required now.
 
-3. **Settings File**
-   - Write `.cli-settings.json` at the specs root with keys:
-     - `specsRoot`
-     - `mode`
-     - `defaultMaxAttempts` (default 2)
-     - `codexModelScaffold`, `codexModelRunImpl`, `codexModelRunVer`, `codexModelSplit` (use reasonable defaults or placeholders).
-     - `acceptanceCommands` (from user input).
-   - Use the `Settings` struct from `spec-01-config-metadata` and `SaveSettings` to serialize.
+4. **Config Persistence**
+   - After successful scaffold:
+     - Set `RepoConfig.SpecsRoot` to the confirmed path.
+     - Set `RepoConfig.Initialized = true`.
+     - Keep any user-provided `AcceptanceCommands`, `Mode`, and Codex choices in the config.
+     - Save to `<repo>/helm.config.json`.
+   - Show a short note: "To scaffold again and overwrite, delete helm.config.json and rerun Helm."
 
-4. **Prompt Templates**
-   - Write `implement.prompt-template.md` and `review.prompt-template.md` based on the product spec:
-
-     - `implement.prompt-template.md`:
-       - Use the strict or parallel variants depending on selected mode.
-       - Include placeholders:
-         - `{{SPEC_ID}}`, `{{SPEC_NAME}}`, `{{SPEC_BODY}}`,
-         - `{{ACCEPTANCE_COMMANDS}}`,
-         - `{{PREVIOUS_REMAINING_TASKS}}`,
-         - `{{MODE}}`.
-       - Enumerate required deliverables: summary, changelog, traceability, runbook, manual smoke, open issues/risks.
-
-     - `review.prompt-template.md`:
-       - Enforce the `STATUS: ok|missing` first line and JSON `remainingTasks` second line format.
-       - Include placeholders:
-         - `{{SPEC_ID}}`, `{{SPEC_NAME}}`, `{{SPEC_BODY}}`,
-         - `{{ACCEPTANCE_CHECKLIST}}`,
-         - `{{ACCEPTANCE_COMMANDS}}`,
-         - `{{IMPLEMENTATION_REPORT}}`,
-         - `{{MODE}}`.
-
-5. **Runner Script**
-   - Create `implement-spec.mjs` as a Node script that:
-     - Accepts a spec directory path as its argument.
-     - Resolves the specs root and reads:
-       - `implement.prompt-template.md`,
-       - `review.prompt-template.md`,
-       - `metadata.json` for the selected spec.
-     - Builds worker and verifier prompts with string substitution.
-     - Calls the Codex CLI:
-       - Worker: `codex exec --dangerously-bypass-approvals-and-sandbox ...`
-       - Verifier: `codex exec --sandbox read-only ...`
-     - Loops worker → verifier up to `MAX_ATTEMPTS` (from env or settings).
-     - Streams both worker and verifier stdout to the console.
-     - Writes `implementation-report.md`.
-     - Updates `metadata.json.status` and `metadata.json.lastRun` based on verifier status:
-       - `STATUS: ok` → `done`
-       - `STATUS: missing` → `in-progress` with notes appended.
-
-   - The actual behavior of the script will be fully exercised in later specs; in this spec, you just need to implement the file and ensure it compiles and runs in a simple dry-run scenario.
-
-6. **Example Spec Folder**
-   - Create `spec-00-example/` with:
-     - `SPEC.md` — a simple example feature spec.
-     - `acceptance-checklist.md` — references the default acceptance commands.
-     - `metadata.json` — status set to `"todo"`, no dependencies.
-     - `implementation-report.md` — placeholder text.
+5. **CLI Entrypoint Behavior**
+   - `helm scaffold` launches the same TUI gate. If the repo is already initialized, show a short message pointing to the main TUI instead of running scaffold again.
+   - `helm` (no subcommand) and other subcommands should automatically route to this gate when initialization is needed.
 
 ## Acceptance Criteria
 
 - `go test ./...` and `go vet ./...` succeed.
-- Running `go run ./cmd/helm scaffold`:
-  - Presents an interactive TUI flow with the steps listed above.
-  - After completing the flow, creates (or confirms the existence of) the `docs/specs` directory and required files.
-- After scaffold:
-  - `.cli-settings.json` exists and matches the selected mode and acceptance commands.
-  - `implement.prompt-template.md` and `review.prompt-template.md` are present and include all required placeholders.
-  - `implement-spec.mjs` exists and is executable by Node (at least prints some output or a help message when run against an example spec).
-  - `spec-00-example` exists with the expected files.
+- Running `go run ./cmd/helm` in a temp repo with no `helm.config.json` presents only the initialization prompt and lets the user edit the specs root before confirming.
+- After choosing `Yes`, the specs root is created with all listed files, none of the pre-existing files are overwritten, and `helm.config.json` is written with `initialized=true` and the chosen `specsRoot`.
+- If the user cancels, the process exits cleanly with a hint to rerun Helm when ready.
+- Re-running `helm` after initialization skips the scaffold gate and proceeds to the home menu (spec-04).
 
 ## Implementation Notes
 
-- Keep the `scaffold` TUI as a separate Bubble Tea model in `internal/tui/scaffold`.
-- The Cobra `scaffold` command should just instantiate the model and run it.
-- For now, you can keep the runner script simple; later specs may refine its behavior and error handling.
-- Testing convention: run scaffold in tests against a temp specs root (e.g., `t.TempDir()/specs-test`) and assert outputs there so we never write into the repository’s `docs/specs/` directory.
+- Reuse Bubble Tea components for confirmation dialogs; keep the flow short (no extra steps beyond path confirmation and summary).
+- Respect the repo-local config only; do not write to `$HOME`.
+- Tests should scaffold into a temp directory so tracked `docs/specs/` remains untouched.
 
 ## Depends on
 
 - spec-00-foundation — Go module and CLI skeleton
-- spec-01-config-metadata — Settings, metadata, and spec discovery
+- spec-01-config-metadata — Repo config, metadata, and spec discovery

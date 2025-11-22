@@ -6,9 +6,9 @@
 
 ## Manual checks
 
-- [ ] A Go module is initialized (a `go.mod` file exists at the repository root).
-- [ ] `go run ./cmd/helm --help` prints usage and lists the `scaffold`, `run`, `spec`, and `status` subcommands.
-- [ ] `go run ./cmd/helm scaffold` prints a stub "not implemented yet" style message and exits successfully.
+- [ ] A Go module is initialized (`go.mod` exists at the repository root).
+- [ ] `go run ./cmd/helm --help` prints usage and lists the `scaffold`, `run`, `spec`, and `status` subcommands and references the forthcoming TUI on bare `helm`.
+- [ ] `go run ./cmd/helm scaffold` prints a stub message and exits successfully.
 - [ ] `go run ./cmd/helm run` prints a stub message and exits successfully.
 - [ ] `go run ./cmd/helm spec` prints a stub message and exits successfully.
 - [ ] `go run ./cmd/helm status` prints a stub message and exits successfully.

@@ -1,175 +1,98 @@
-# spec-01-config-metadata — Settings, metadata, and spec discovery
+# spec-01-config-metadata — Repo config, metadata, and spec discovery
 
 ## Summary
 
-Introduce the core domain types and filesystem conventions for the spec runner. This spec defines how `metadata.json` and global app settings are represented in Go, adds a settings TUI for editing them, and adds basic logic to discover `spec-*` folders under `docs/specs`.
+Define the repo-scoped configuration (`helm.config.json`), metadata structures, and spec discovery helpers that the TUI will rely on for its first-run experience. The config remembers the specs root and whether scaffold has already been performed so the TUI can gate features until initialization is complete.
 
 ## Goals
 
-- Define the `SpecMetadata` struct matching the metadata schema.
-- Define a global `Settings` struct (stored outside individual repos) with model + reasoning options.
-- Implement load/save helpers for metadata and settings.
-- Provide a settings TUI that edits these global settings with pickers (no free-form model input).
-- Implement basic spec discovery that finds spec folders and attaches metadata.
-- Lay the groundwork for future TUI commands (`run`, `status`, etc.) that will use this information.
+- Represent spec metadata (`metadata.json`) and repo config (`helm.config.json`) in Go.
+- Persist repo config in the working repo (not globally) with fields for specs root and initialization state.
+- Provide helpers to detect “first-run” vs “initialized” and to discover spec folders under the configured specs root.
+- Keep strict validation of model/effort options so later Codex calls can reuse them.
 
 ## Non-Goals
 
-- No Bubble Tea TUI yet.
-- No actual CLI command behavior beyond wiring stubs to call the new helpers.
-- No Codex integration or runner orchestration.
+- No Bubble Tea UI flows yet (the first-run prompt will be handled in later specs).
+- No Codex calls or runner orchestration.
+- No editing of metadata from a UI; just load/save.
 
 ## Detailed Requirements
 
 1. **Metadata Model**
-   - Create an `internal/metadata` package with:
-     - A `SpecStatus` type with values:
-       - `"todo"`, `"in-progress"`, `"done"`, `"blocked"`.
-     - A `SpecMetadata` struct:
+   - Keep the `SpecStatus` type and `SpecMetadata` struct (id, name, status, dependsOn, lastRun, notes, acceptanceCommands) as already defined in the previous version of this spec. Validation remains unchanged.
 
-       ```go
-       type SpecStatus string
-
-       const (
-           StatusTodo       SpecStatus = "todo"
-           StatusInProgress SpecStatus = "in-progress"
-           StatusDone       SpecStatus = "done"
-           StatusBlocked    SpecStatus = "blocked"
-       )
-
-       type SpecMetadata struct {
-           ID                 string      `json:"id"`
-           Name               string      `json:"name"`
-           Status             SpecStatus  `json:"status"`
-           DependsOn          []string    `json:"dependsOn"`
-           LastRun            *time.Time  `json:"lastRun,omitempty"`
-           Notes              string      `json:"notes,omitempty"`
-           AcceptanceCommands []string    `json:"acceptanceCommands"`
-       }
-       ```
-
-   - Provide `LoadMetadata(path string) (*SpecMetadata, error)` and `SaveMetadata(path string, *SpecMetadata) error`.
-
-2. **Settings Model (Global, with model + reasoning options)**
-   - Create an `internal/config` package with:
+2. **Repo Config File (`helm.config.json`)**
+   - Stored at the repository root where `helm` is invoked (same directory as `.git` in most cases).
+   - Define a `Mode` enum (`strict`, `parallel`) reused from the prior spec.
+   - Define:
 
      ```go
-     type Mode string
-
-     const (
-         ModeParallel Mode = "parallel"
-         ModeStrict   Mode = "strict"
-     )
+     type RepoConfig struct {
+         SpecsRoot          string        `json:"specsRoot"`
+         Initialized        bool          `json:"initialized"`
+         Mode               Mode          `json:"mode"`
+         DefaultMaxAttempts int           `json:"defaultMaxAttempts"`
+         AcceptanceCommands []string      `json:"acceptanceCommands"`
+         CodexScaffold      CodexChoice   `json:"codexScaffold"`
+         CodexRunImpl       CodexChoice   `json:"codexRunImpl"`
+         CodexRunVer        CodexChoice   `json:"codexRunVer"`
+         CodexSplit         CodexChoice   `json:"codexSplit"`
+     }
 
      type CodexChoice struct {
          Model     string `json:"model"`
          Reasoning string `json:"reasoning"`
      }
-
-     type Settings struct {
-         SpecsRoot          string      `json:"specsRoot"`
-         Mode               Mode        `json:"mode"`
-         DefaultMaxAttempts int         `json:"defaultMaxAttempts"`
-         CodexScaffold      CodexChoice `json:"codexScaffold"`
-         CodexRunImpl       CodexChoice `json:"codexRunImpl"`
-         CodexRunVer        CodexChoice `json:"codexRunVer"`
-         CodexSplit         CodexChoice `json:"codexSplit"`
-         AcceptanceCommands []string    `json:"acceptanceCommands"`
-     }
      ```
 
-   - Allowed model values (fixed list, no free-form input):
-     - `gpt-5.1`
-     - `gpt-5.1-codex`
-     - `gpt-5.1-codex-mini`
-     - `git-5.1-codex-max`
-   - Allowed reasoning values (per model):
-     - `gpt-5.1`: `low`, `medium`, `high`
-     - `gpt-5.1-codex`: `low`, `medium`, `high`
-     - `gpt-5.1-codex-mini`: `medium`, `high`
-     - `git-5.1-codex-max`: `low`, `medium`, `high`, `xhigh`
-   - The stored `model` and `reasoning` values must be usable directly as `codex exec --model <model> --reasoning <value>` in later specs.
-   - Implement helpers:
-     - `LoadSettings() (*Settings, error)`
-       - Reads from a **global** settings file, e.g. `$HOME/.helm/settings.json` (or platform-appropriate config dir).
-       - If missing, returns defaults:
-         - `SpecsRoot = "docs/specs"`,
-         - `Mode = ModeStrict`,
-         - `DefaultMaxAttempts = 2`,
-         - `AcceptanceCommands` empty,
-         - Default models: `CodexRunImpl` and `CodexRunVer` → `gpt-5.1-codex` with `reasoning="medium"`; `CodexScaffold` and `CodexSplit` → `gpt-5.1` with `reasoning="medium"`.
-     - `SaveSettings(settings *Settings) error` writes to the same global location.
-     - `Validate(settings *Settings) error` ensures model/reasoning pairs are from the allowed combinations above.
-   - The `root` parameter is no longer required for settings since storage is global; repo-relative paths only affect spec discovery.
+   - Defaults when the file is absent:
+     - `SpecsRoot = "specs"`
+     - `Initialized = false`
+     - `Mode = ModeStrict`
+     - `DefaultMaxAttempts = 2`
+     - `AcceptanceCommands = []`
+     - Codex defaults: scaffold/split → `gpt-5.1` with `reasoning="medium"`; run impl/ver → `gpt-5.1-codex` with `reasoning="medium"`.
+   - Allowed model/reasoning pairs remain the fixed list from the earlier spec; `ValidateRepoConfig` must reject invalid combinations.
+   - Provide helpers:
+     - `LoadRepoConfig(root string) (*RepoConfig, error)` reading `<root>/helm.config.json`.
+     - `SaveRepoConfig(root string, cfg *RepoConfig) error` writing the same path.
+     - `DefaultRepoConfig() *RepoConfig` and `ValidateRepoConfig(cfg *RepoConfig) error`.
+     - If `.cli-settings.json` exists (from older scaffold flows) and `helm.config.json` is missing, bootstrap defaults from it but persist only to `helm.config.json`.
 
-3. **Settings TUI (new)**
-   - Add a Bubble Tea model in `internal/tui/settings` plus a Cobra command `helm settings` that launches it.
-   - The TUI must let users edit:
-     - `specsRoot` (text input, default `docs/specs`).
-     - `mode` (toggle strict/parallel).
-     - `defaultMaxAttempts` (numeric input with sane bounds).
-     - `acceptanceCommands` (multi-line or per-line editor, reuse scaffold flow UX).
-     - Codex slots (`Scaffold`, `RunImpl`, `RunVer`, `Split`): each uses **option pickers** (no free text) for model, and a dependent picker for reasoning effort constrained by the chosen model’s allowed values.
-   - On save:
-     - Validate combinations; show an inline error if invalid.
-     - Persist via `SaveSettings` to the global settings file.
-   - Keyboard expectations (minimum): up/down or tab to move fields, enter to pick/save, esc/ctrl+c to cancel.
+3. **First-Run Detection**
+   - Add a helper `NeedsInitialization(cfg *RepoConfig, fsExists func(string) bool) (bool, string)` that returns whether the TUI should show the initialization gate, plus a human-friendly reason, e.g.,
+     - `helm.config.json` missing
+     - `specsRoot` directory missing
+     - `Initialized` is false
+   - The helper must not mutate files; it only inspects configuration and filesystem existence.
 
-4. **Spec Folder Representation**
-   - Create an `internal/specs` package with:
+4. **Spec Folder Representation and Discovery**
+   - Keep the `SpecFolder` struct (`ID`, `Name`, `Path`, `Metadata`, `Checklist`, `CanRun`, `UnmetDeps`).
+   - `DiscoverSpecs(root string)` now uses the repo-configured `SpecsRoot` (default `specs/`).
+   - Require each spec folder to contain `SPEC.md` and `metadata.json`; `acceptance-checklist.md` remains optional.
+   - Provide `ComputeDependencyState` exactly as before to fill `CanRun` and `UnmetDeps` without mutating `metadata.status`.
 
-     ```go
-     type SpecFolder struct {
-         ID        string
-         Name      string
-         Path      string
-         Metadata  *metadata.SpecMetadata
-         Checklist string   // path to acceptance-checklist.md
-         CanRun    bool     // derived by dependency analysis
-         UnmetDeps []string // IDs of deps not yet done
-     }
-     ```
-
-   - Implement `DiscoverSpecs(root string) ([]*SpecFolder, error)` that:
-     - Scans `root` (`docs/specs` by default).
-     - Finds subdirectories whose names start with `spec-`.
-     - Requires each spec folder to contain `SPEC.md` and `metadata.json`.
-     - Reads `metadata.json` and populates `SpecFolder.Metadata`.
-     - Points `Checklist` to `acceptance-checklist.md` if present (or leaves it empty).
-
-5. **Dependency State Calculation**
-   - Implement a helper, e.g., `ComputeDependencyState(specs []*SpecFolder)` that:
-     - For each spec:
-       - Sets `CanRun = true` if:
-         - Its `Status` is not `"done"`, and
-         - All `dependsOn` entries correspond to specs whose status is `"done"`.
-       - Fills `UnmetDeps` with IDs that are not `"done"`.
-   - The `blocked` status will be a *derived view*:
-     - Do not mutate `metadata.status` to `"blocked"` automatically.
-     - Later TUI code will decide when to show a spec as visually “blocked”.
-
-6. **Root Command Wiring (Minimal)**
-   - Update the root CLI command (from `spec-00-foundation`) so that:
-     - It loads **global** settings on startup (failing fast with a helpful message if unreadable).
-     - It prints a helpful error if `SpecsRoot` does not exist yet.
-     - It registers `helm settings` to launch the new settings TUI.
-   - Do not add other TUI behavior yet; just ensure the infrastructure compiles and can be imported by later specs.
+5. **Root Command Wiring (Minimal)**
+   - Update the Cobra root initialization so every command loads `helm.config.json` first and surfaces a clear error if it cannot be read/validated.
+   - If the config says `Initialized=false` or the `SpecsRoot` does not exist, the command should exit with a friendly message pointing the user to the TUI initialization flow (implemented in later specs).
+   - Do not build any Bubble Tea screens here; just ensure all commands have access to `RepoConfig` and the resolved specs root.
 
 ## Acceptance Criteria
 
 - `go test ./...` and `go vet ./...` succeed.
 - Unit tests cover:
-  - `DiscoverSpecs` and `ComputeDependencyState` as before.
-  - `LoadSettings`/`SaveSettings` round-trip via a temp global settings path (no repo file required).
-  - Validation rejects disallowed model/reasoning pairs.
-- Manual or integration test notes: launching `helm settings` allows selecting models from the fixed list (no free text) and choosing reasoning options constrained by the model, then saves to the global settings file.
+  - `LoadRepoConfig`/`SaveRepoConfig` round-trip via a temp repo root.
+  - Validation of model/reasoning combinations and rejection of invalid pairs.
+  - `NeedsInitialization` returning expected reasons for missing config, missing specs root, and `Initialized=false`.
+  - `DiscoverSpecs` + `ComputeDependencyState` using a temp specs root (no writes into the real `docs/specs/`).
+- Running `go run ./cmd/helm --help` still shows stub subcommands, but they fail fast with a readable message when `helm.config.json` is missing or invalid.
 
 ## Implementation Notes
 
-- Keep the `internal` packages self-contained and free of CLI-specific concerns.
-- Favor small helper functions that will be easy to unit test.
-- The settings TUI should be minimal but must rely on the same `Settings` struct and validation helper; when persisted, the chosen reasoning value will later be passed to `codex exec` via `--reasoning` alongside `--model`.
-- Testing convention: when exercising settings/spec discovery in tests, point `SpecsRoot` at a temp path (e.g., `t.TempDir()/specs-test`) to avoid mutating the tracked `docs/specs/` workspace.
+- Keep repo config strictly repo-scoped; no `$HOME` state. This allows different repos to have different `specsRoot` values while the CLI behavior stays consistent.
+- The default specs root changed from `docs/specs` to `specs` to match the new TUI prompt; the helper must honor custom values set during initialization.
+- Tests should pass a temp directory as the repo root and clean up any written `helm.config.json` files.
 
 ## Depends on
 

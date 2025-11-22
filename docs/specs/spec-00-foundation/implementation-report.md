@@ -1,4 +1,4 @@
-# Implementation Report for spec-00-foundation — Go module and CLI skeleton
+# Implementation Report for spec-00-foundation — CLI skeleton and TUI entrypoints
 
 - Mode: strict
 - Max attempts: 2
@@ -23,7 +23,7 @@ SUMMARY
 CHANGELOG
 - `.gitignore:1-25` – Added standard Go build/test/IDE ignores.
 - `go.mod:1-9` / `go.sum` – Initialized module, set Go version, and recorded Cobra/pflag/mousetrap deps.
-- `cmd/helm/main.go:1-76` – Implemented Cobra root command plus `scaffold`, `run`, `spec`, and `status` stubs that print friendly messages.
+- `cmd/helm/main.go:1-76` – Implemented Cobra root command plus `scaffold`, `run`, `split`, and `status` stubs that print friendly messages.
 - `internal/config/config.go:1-9` – Added default-environment helper for future config work.
 - `internal/config/config_test.go:1-9` – Added unit test exercising the helper to ensure `go test ./...` has coverage.
 - `internal/specs/specs.go:1-3`, `internal/metadata/metadata.go:1-3`, `internal/tui/tui.go:1-3` – Stubbed placeholder packages required by the spec.
@@ -31,26 +31,26 @@ CHANGELOG
 TRACEABILITY
 - “Running `go test ./...` succeeds.” → Verified locally (2025-11-22) with `go test ./...` returning exit code 0 after adding the config test.
 - “Running `go vet ./...` succeeds.” → Executed `go vet ./...`; command completed with exit code 0 in this branch.
-- “`go run ./cmd/helm --help` shows the root command plus scaffold/run/spec/status subcommands.” → Running `go run ./cmd/helm --help` now lists the root description and all four subcommands defined in `cmd/helm/main.go:16-75`.
+- “`go run ./cmd/helm --help` shows the root command plus scaffold/run/split/status subcommands.” → Running `go run ./cmd/helm --help` now lists the root description and all four subcommands defined in `cmd/helm/main.go:16-75`.
 - “`go run ./cmd/helm scaffold` prints a stub and exits 0.” → Command outputs “scaffold not implemented yet” via `newScaffoldCmd` (`cmd/helm/main.go:34-42`) and returned success.
 - “`go run ./cmd/helm run` prints a stub and exits 0.” → `newRunCmd` (`cmd/helm/main.go:45-53`) prints “run not implemented yet”; verified run completed with exit code 0.
-- “`go run ./cmd/helm spec` prints a stub and exits 0.” → `newSpecCmd` (`cmd/helm/main.go:56-64`) prints the placeholder message; manual execution confirmed success.
+- “`go run ./cmd/helm split` prints a stub and exits 0.” → `newSplitCmd` (`cmd/helm/main.go:56-64`) prints the placeholder message; manual execution confirmed success.
 - “`go run ./cmd/helm status` prints a stub and exits 0.” → `newStatusCmd` (`cmd/helm/main.go:67-75`) emits “status not implemented yet”; verified command exits cleanly.
 
 RUNBOOK
 - Install Go 1.25+ (already required). No other tools are necessary.
 - Run the CLI:
   - Show help: `go run ./cmd/helm --help`
-  - Execute stubs: `go run ./cmd/helm scaffold` (or `run`, `spec`, `status`)
+  - Execute stubs: `go run ./cmd/helm scaffold` (or `run`, `split`, `status`)
 - Required acceptance commands:
   - `go test ./...`
   - `go vet ./...`
 - All commands run from the repo root `/Users/polarzero/code/projects/helm`; no environment variables are needed.
 
 MANUAL SMOKE TEST
-1. `go run ./cmd/helm --help` → Expect the long description plus subcommands scaffold/run/spec/status in the Available Commands list.
+1. `go run ./cmd/helm --help` → Expect the long description plus subcommands scaffold/run/split/status in the Available Commands list.
 2. `go run ./cmd/helm scaffold` → Expect the line “scaffold not implemented yet”.
-3. Repeat for `run`, `spec`, `status` to confirm each prints its own placeholder text and exits 0.
+3. Repeat for `run`, `split`, `status` to confirm each prints its own placeholder text and exits 0.
 4. `go test ./...` → Expect all packages to pass (only `internal/config` currently has a test).
 
 OPEN ISSUES & RISKS

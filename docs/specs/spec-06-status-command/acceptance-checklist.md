@@ -6,11 +6,9 @@
 
 ## Manual checks
 
-- [ ] Running `go run ./cmd/helm status` presents a TUI instead of plain text.
-- [ ] Summary counts at the top correctly reflect the number of TODO, IN PROGRESS, DONE, and BLOCKED specs based on `metadata.json` and dependencies.
-- [ ] The dependency graph view shows specs in a tree structure with ASCII connectors.
-- [ ] The table view shows ID, name, status, dependencies, and last run time.
-- [ ] Pressing `tab` toggles between the graph view and the table view.
-- [ ] Pressing `f` cycles through focus modes (all / runnable / subtree).
-- [ ] Selecting a spec in the table and pressing `enter` updates the subtree focus accordingly.
-- [ ] Specs that are not done and have unmet dependencies are clearly marked as BLOCKED in the UI.
+- [ ] `go run ./cmd/helm status` runs a standalone status view (non-shell). Within the shell opened by bare `helm`, selecting Status mounts the pane and `q` returns to home without exiting the process.
+- [ ] Summary counts for TODO / IN PROGRESS / DONE / BLOCKED are shown at the top.
+- [ ] Dependency graph renders with ASCII connectors and reflects dependencies from metadata.
+- [ ] Table view shows ID, Name, Status, Deps, Last Run; rows are scrollable.
+- [ ] `tab` toggles graph/table; `f` cycles all / runnable / subtree modes; `enter` on a row sets subtree focus.
+- [ ] Specs with unmet dependencies are visually indicated as BLOCKED even if their metadata status is todo/in-progress.

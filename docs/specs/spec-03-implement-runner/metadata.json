@@ -1,13 +1,13 @@
 {
   "id": "spec-03-implement-runner",
-  "name": "implement-spec runner with worker/verifier loop",
+  "name": "Go runner with headless flag",
   "status": "done",
   "dependsOn": [
     "spec-00-foundation",
     "spec-01-config-metadata",
     "spec-02-scaffold-command"
   ],
-  "notes": "\n[2025-11-22T10:17:22.780Z] attempt 1 status=ok: ok",
+  "notes": "\n[2025-11-22T10:17:22.780Z] attempt 1 status=ok: ok\n[2025-11-22] spec refactored to expose headless --exec flag and TUI-first default.",
   "acceptanceCommands": [
     "make all"
   ],

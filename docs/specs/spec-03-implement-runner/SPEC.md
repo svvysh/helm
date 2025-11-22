@@ -2,170 +2,72 @@
 
 ## Summary
 
-Build a Go-based implementation runner (the `helm run` command) that performs the same worker → verifier loop as `docs/specs/implement-spec.mjs`. The Node script remains an internal reference for TUI authoring, but the shipped tooling in this repo must use the Go runner to execute acceptance commands and update spec metadata.
+Build the Go-based runner that performs the worker → verifier loop for a single spec directory. The runner will be invoked from the Run pane of the TUI (spec-04). A thin headless flag on `helm run` may reuse the same code, but the default `helm run` behavior is to open the TUI.
 
 ## Goals
 
-- Implement a Go CLI entrypoint that runs the worker/verifier loop for a single spec directory, mirroring the behavior of `docs/specs/implement-spec.mjs`.
-- Consume `acceptanceCommands` and other metadata from `metadata.json` to build prompts and drive execution.
-- Integrate the existing templates (`implement.prompt-template.md`, `review.prompt-template.md`) exactly as the Node script does.
-- Stream worker/verifier output to stdout/stderr and persist updates to `metadata.json` and `implementation-report.md`.
-- Keep the runner generic so it works for any spec folder under the configured specs root.
+- Implement a reusable Go runner that mirrors `docs/specs/implement-spec.mjs`.
+- Consume `acceptanceCommands` and metadata to build prompts and drive execution.
+- Stream worker/verifier output and persist updates to `metadata.json` and `implementation-report.md`.
+- Expose a headless entrypoint (e.g., `helm run --exec <spec>`) for automation without altering the TUI-first default.
 
 ## Non-Goals
 
-- Do not ship or invoke the Node script at runtime; it is reference material only.
-- No TUI changes yet; this is a CLI implementation.
-- No parallel execution of multiple specs; one spec per process.
+- No Bubble Tea code here (handled in spec-04).
+- No multi-spec orchestration; one spec per process.
+- No global settings; use repo-local `helm.config.json` defaults.
 
 ## Detailed Requirements
 
 1. **Inputs & Environment**
-   - Invoke via Go CLI, e.g.:
+   - Export a `Runner` type (or similar) that can be called from the TUI with a fully resolved spec path and repo config.
+   - Provide a headless CLI path such as:
 
      ```sh
-     helm run <spec-dir>
+     helm run --exec <spec-dir-or-id>
      ```
 
-   - `<spec-dir>` accepts the same forms as the Node runner: a relative path (`docs/specs/spec-00-foundation`) or a bare spec name (`spec-00-foundation`, resolved under `docs/specs` by default).
+     When `--exec` (or equivalent flag) is absent, the command should delegate to the TUI (spec-04) and not run headless.
    - Environment variables:
-     - `MAX_ATTEMPTS` (optional, default: 2).
-     - `CODEX_MODEL_IMPL` (optional) to override the worker model.
-     - `CODEX_MODEL_VER` (optional) to override the verifier model.
-   - Accept optional flags that mirror the Node behavior (e.g., `--mode`, `--dry-run` if you add one) but keep defaults identical.
+     - `MAX_ATTEMPTS` (optional, default: `RepoConfig.DefaultMaxAttempts` or 2).
+     - `CODEX_MODEL_IMPL` / `CODEX_MODEL_VER` override the repo config model choices.
 
 2. **Spec Resolution**
-   - Resolve the absolute path to the spec directory.
-   - Load:
-     - `SPEC.md` (spec body),
-     - `metadata.json` (ID, name, acceptance commands, prior state),
-     - `implement.prompt-template.md`,
-     - `review.prompt-template.md`.
-   - Derive:
-     - `specID` from `metadata.id` or folder name if missing.
-     - `specName` from `metadata.name` or the first `#` heading in `SPEC.md`.
+   - Resolve the absolute path to the spec directory using `RepoConfig.SpecsRoot` when given a bare ID.
+   - Load `SPEC.md`, `metadata.json`, `implement.prompt-template.md`, and `review.prompt-template.md` from the specs root.
+   - Derive `specID` and `specName` from metadata or headings as before.
 
-3. **Main Loop (Go pseudocode)**
+3. **Worker/Verifier Loop**
+   - Preserve the control flow and parsing rules from the prior version of this spec (STATUS lines, remainingTasks JSON, attempt loop capped by `maxAttempts`).
+   - Update metadata and write `implementation-report.md` after each verifier run.
+   - Exit codes: 0 on `STATUS: ok` within attempts; non-zero otherwise or on parse/system errors.
 
-   ```go
-   remaining := anyPreviousTasks
-   for attempt := 1; attempt <= maxAttempts; attempt++ {
-       workerOut, err := runWorker(ctx, remaining)
-       if err != nil { return err }
+4. **Metadata Updates**
+   - `STATUS: ok` → `status="done"`, update `lastRun`, append a succinct success note.
+   - `STATUS: missing` → `status="in-progress"`, append a note summarizing remaining tasks.
+   - Persist `metadata.json` after every verifier run.
 
-       status, remaining, err := runVerifier(ctx, workerOut)
-       if err != nil { return err }
-
-       updateMetadata(status, remaining, workerOut)
-       writeReport(status, remaining, attempt, maxAttempts, workerOut)
-
-       if status == "ok" { return nil }
-   }
-   return fmt.Errorf("exhausted attempts without STATUS: ok")
-   ```
-
-4. **Worker Phase**
-   - Fill `implement.prompt-template.md` with:
-     - `{{SPEC_ID}}`, `{{SPEC_NAME}}`, `{{SPEC_BODY}}`.
-     - `{{ACCEPTANCE_COMMANDS}}` rendered from `metadata.acceptanceCommands` as a bullet list.
-     - `{{PREVIOUS_REMAINING_TASKS}}` as JSON (empty array/object when none).
-     - `{{MODE}}` (default `"strict"` unless overridden).
-   - Invoke the Codex CLI:
-
-     ```sh
-     codex exec --dangerously-bypass-approvals-and-sandbox --model "$CODEX_MODEL_IMPL" --stdin
-     ```
-
-     falling back to `codexModelRunImpl` from settings when the env var is absent.
-   - Stream stdout/stderr live; keep a full copy of stdout for verifier input and reporting.
-
-5. **Verifier Phase**
-   - Fill `review.prompt-template.md` with the spec body, acceptance commands, the worker output, and mode.
-   - Invoke:
-
-     ```sh
-     codex exec --sandbox read-only --model "$CODEX_MODEL_VER" --stdin
-     ```
-
-     with a fallback to `codexModelRunVer` when the env var is missing.
-   - Parse verifier stdout strictly:
-     - Line 1: `STATUS: ok` or `STATUS: missing`.
-     - Line 2: JSON such as `{ "remainingTasks": [ ... ] }`.
-   - Any deviation → exit non-zero.
-
-6. **Metadata Updates**
-   - On each verifier run:
-     - `STATUS: ok` → `metadata.status = "done"`, update `metadata.lastRun` (ISO8601), append a short success note (e.g., last worker summary line).
-     - `STATUS: missing` → `metadata.status = "in-progress"`, append a succinct summary of `remainingTasks` to `metadata.notes`.
-   - Persist `metadata.json` after every attempt.
-
-7. **Implementation Report**
-   - Write or overwrite `implementation-report.md` under the spec directory containing:
-     - Spec ID and name.
-     - Mode and `maxAttempts` (from env/flags).
-     - Attempts performed.
-     - Final verifier `STATUS`.
-     - Final `remainingTasks` JSON.
-     - A tail or full copy of the final worker output sufficient for debugging.
-
-8. **Exit Codes**
-   - `STATUS: ok` within `MAX_ATTEMPTS` → exit 0.
-   - Exhausted attempts without `STATUS: ok` → exit > 0.
-   - System errors (missing files, invalid JSON, Codex CLI missing, bad verifier output) → print a clear error to stderr and exit > 0.
-
-## Reference Go Shape (illustrative, not prescriptive)
-
-```go
-type Runner struct {
-    SpecsRoot     string
-    MaxAttempts   int
-    Mode          string
-    WorkerModel   string
-    VerifierModel string
-}
-
-func (r Runner) Run(ctx context.Context, specPath string) error {
-    spec, err := loadSpec(specPath)
-    if err != nil { return err }
-
-    remaining := spec.PreviousRemainingTasks()
-    for attempt := 1; attempt <= r.MaxAttempts; attempt++ {
-        workerOut, err := r.runWorker(ctx, spec, remaining)
-        if err != nil { return err }
-
-        status, remaining, err := r.runVerifier(ctx, spec, workerOut)
-        if err != nil { return err }
-
-        if err := r.updateMetadata(spec, status, remaining, workerOut); err != nil { return err }
-        if err := r.writeReport(spec, attempt, status, remaining, workerOut); err != nil { return err }
-
-        if status == "ok" {
-            return nil
-        }
-    }
-    return fmt.Errorf("exhausted %d attempts without STATUS: ok", r.MaxAttempts)
-}
-```
-
-Mirror the control flow and prompt construction of `docs/specs/implement-spec.mjs`; only the language/runtime changes.
+5. **Headless CLI Flag**
+   - Implement the `--exec` (or similarly named) flag on `helm run` to call the runner directly for automation/CI.
+   - When the flag is absent, return control to the TUI entry defined in spec-04 (i.e., do not run the loop here).
 
 ## Acceptance Criteria
 
-- `go test ./...` and `go vet ./...` succeed (including any new tests around the runner and metadata helpers).
-- With a dummy spec and a mockable/fake `codex` CLI:
-  - `helm run docs/specs/spec-00-example` completes without crashing.
-  - Verifier output `STATUS: ok` + empty `remainingTasks` sets `metadata.status` to `"done"`, updates `lastRun`, and writes `implementation-report.md` with the expected fields.
-  - Verifier output `STATUS: missing` updates `metadata.status` to `"in-progress"`, appends a note summarizing `remainingTasks`, and captures the failure in `implementation-report.md`.
-- Behavior matches `implement-spec.mjs`: same prompt content, parsing rules, exit codes, and metadata/report side effects.
+- `go test ./...` and `go vet ./...` succeed (including runner tests).
+- With a dummy spec in a temp `specs` root and a fake `codex` binary:
+  - `helm run --exec spec-00-example` completes without crashing.
+  - `STATUS: ok` sets metadata to `done`, updates `lastRun`, and writes a report.
+  - `STATUS: missing` sets metadata to `in-progress` and captures remaining tasks in both notes and the report.
+- Running `helm run` **without** `--exec` delegates to the TUI (spec-04) instead of running headless.
 
 ## Implementation Notes
 
-- Use `os/exec` with `exec.CommandContext` to call `codex exec`, streaming stdout/stderr while also capturing stdout for the verifier and reports (e.g., via `io.TeeReader`).
-- Keep the runner self-contained in Go; do not shell out to the Node script.
-- Tests should point to a temp specs root (e.g., `t.TempDir()/specs-test`) with its own `.cli-settings.json` so `docs/specs/` stays untouched.
+- Use `os/exec` with streaming stdout/stderr and teeing stdout for verifier input.
+- Keep the runner self-contained in Go; the Node script remains reference material only.
+- Tests should write into a temp specs root to keep the tracked `docs/specs/` tree clean.
 
 ## Depends on
 
 - spec-00-foundation — Go module and CLI skeleton
-- spec-01-config-metadata — Settings, metadata, and spec discovery
-- spec-02-scaffold-command — scaffold command and initial specs layout
+- spec-01-config-metadata — Repo config, metadata, and spec discovery
+- spec-02-scaffold-command — Scaffold flow inside the TUI

@@ -1,6 +1,6 @@
 {
   "id": "spec-04-run-command",
-  "name": "run command TUI and spec execution",
+  "name": "TUI shell and Run pane",
   "status": "done",
   "dependsOn": [
     "spec-00-foundation",
@@ -8,7 +8,7 @@
     "spec-02-scaffold-command",
     "spec-03-implement-runner"
   ],
-  "notes": "\n[2025-11-22T11:46:51.324Z] attempt 1 status=ok: ok",
+  "notes": "\n[2025-11-22T11:46:51.324Z] attempt 1 status=ok: ok\n[2025-11-22] spec refactored for home navigation (Run/Breakdown/Status) and next-available execution.",
   "acceptanceCommands": [
     "make all"
   ],

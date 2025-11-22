@@ -1,9 +1,9 @@
 {
   "id": "spec-00-foundation",
-  "name": "Go module and CLI skeleton",
+  "name": "CLI skeleton and TUI entrypoints",
   "status": "done",
   "dependsOn": [],
-  "notes": "\n[2025-11-22T08:11:35.275Z] attempt 1 status=ok: ok",
+  "notes": "\n[2025-11-22T08:11:35.275Z] attempt 1 status=ok: ok\n[2025-11-22] spec refactored for TUI-first workflow and split command naming.",
   "acceptanceCommands": [
     "make all"
   ],

@@ -1,13 +1,13 @@
 {
   "id": "spec-06-status-command",
-  "name": "status command TUI and dependency graph",
+  "name": "Status pane and dependency graph",
   "status": "todo",
   "dependsOn": [
     "spec-00-foundation",
     "spec-01-config-metadata",
     "spec-04-run-command"
   ],
-  "notes": "",
+  "notes": "[2025-11-22] spec refactored for TUI home integration and non-exiting navigation.",
   "acceptanceCommands": [
     "make all"
   ]

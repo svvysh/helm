@@ -1,4 +1,4 @@
-# Implementation Report for spec-05-spec-splitting-command — spec command for splitting large specs
+# Implementation Report for spec-05-spec-splitting-command — Breakdown pane / spec command
 
 - Mode: strict
 - Max attempts: 2
