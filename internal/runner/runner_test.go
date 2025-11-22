@@ -15,7 +15,7 @@ import (
 
 func TestRunnerSuccessWritesMetadataAndReport(t *testing.T) {
 	root := t.TempDir()
-	specsRoot := filepath.Join(root, "docs", "specs")
+	specsRoot := filepath.Join(root, "specs")
 	specDir := filepath.Join(specsRoot, "spec-99-demo")
 	mustMkdirAll(t, specDir)
 	writeSpecFiles(t, specsRoot, specDir, []string{"make all"})
@@ -78,7 +78,7 @@ func TestRunnerSuccessWritesMetadataAndReport(t *testing.T) {
 
 func TestRunnerMissingPropagatesRemainingTasks(t *testing.T) {
 	root := t.TempDir()
-	specsRoot := filepath.Join(root, "docs", "specs")
+	specsRoot := filepath.Join(root, "specs")
 	specDir := filepath.Join(specsRoot, "spec-99-demo")
 	mustMkdirAll(t, specDir)
 	writeSpecFiles(t, specsRoot, specDir, nil)
@@ -131,7 +131,7 @@ func TestRunnerMissingPropagatesRemainingTasks(t *testing.T) {
 
 func TestRunnerUsesPreviousRemainingTasksInPrompt(t *testing.T) {
 	root := t.TempDir()
-	specsRoot := filepath.Join(root, "docs", "specs")
+	specsRoot := filepath.Join(root, "specs")
 	specDir := filepath.Join(specsRoot, "spec-99-demo")
 	mustMkdirAll(t, specDir)
 	writeSpecFiles(t, specsRoot, specDir, nil)

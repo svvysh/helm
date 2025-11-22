@@ -1,14 +1,15 @@
 {
   "id": "spec-05-spec-splitting-command",
   "name": "spec command for splitting large specs",
-  "status": "todo",
+  "status": "done",
   "dependsOn": [
     "spec-00-foundation",
     "spec-01-config-metadata",
     "spec-02-scaffold-command"
   ],
-  "notes": "",
+  "notes": "\n[2025-11-22T12:31:35.812Z] attempt 1 status=missing: remaining tasks: add docs/specs/spec-splitting-guide.md so helm spec can build the Codex prompt without error\n[2025-11-22T12:50:13.439Z] attempt 2 status=ok: ok",
   "acceptanceCommands": [
     "make all"
-  ]
+  ],
+  "lastRun": "2025-11-22T12:50:13.439Z"
 }

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultSpecsRoot    = "docs/specs"
+	defaultSpecsRoot    = "specs"
 	defaultSettingsDir  = ".helm"
 	defaultSettingsFile = "settings.json"
 )

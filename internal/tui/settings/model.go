@@ -88,7 +88,7 @@ type model struct {
 
 func newModel(settings config.Settings) model {
 	root := textinput.New()
-	root.Placeholder = "docs/specs"
+	root.Placeholder = "specs"
 	root.SetValue(settings.SpecsRoot)
 	root.Prompt = ""
 

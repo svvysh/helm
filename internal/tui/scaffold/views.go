@@ -20,7 +20,7 @@ func introView() string {
 	lines := []string{
 		titleStyle.Render("helm scaffold"),
 		"",
-		"This flow will create docs/specs with prompt templates, settings, the runner script,",
+		"This flow will create specs/ with prompt templates, settings, the runner script,",
 		"and a sample spec so you can start executing specs immediately.",
 		"",
 		"Press Enter to get started or Esc to cancel.",

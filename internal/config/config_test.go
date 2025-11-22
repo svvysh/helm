@@ -14,8 +14,8 @@ func TestLoadSettingsDefaultsWhenMissing(t *testing.T) {
 		t.Fatalf("LoadSettings() error = %v", err)
 	}
 
-	if got.SpecsRoot != "docs/specs" {
-		t.Fatalf("SpecsRoot = %q, want docs/specs", got.SpecsRoot)
+	if got.SpecsRoot != "specs" {
+		t.Fatalf("SpecsRoot = %q, want specs", got.SpecsRoot)
 	}
 	if got.Mode != ModeStrict {
 		t.Fatalf("Mode = %q, want %q", got.Mode, ModeStrict)

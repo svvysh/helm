@@ -2,16 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/polarzero/helm/internal/config"
+	innerscaffold "github.com/polarzero/helm/internal/scaffold"
 	runtui "github.com/polarzero/helm/internal/tui/run"
 	scaffoldtui "github.com/polarzero/helm/internal/tui/scaffold"
 	settingsui "github.com/polarzero/helm/internal/tui/settings"
+	specsplittui "github.com/polarzero/helm/internal/tui/specsplit"
 )
 
 func main() {
@@ -44,7 +48,7 @@ func newRootCmd() *cobra.Command {
 		specsRoot := config.ResolveSpecsRoot(".", settings.SpecsRoot)
 		if _, err := os.Stat(specsRoot); err != nil {
 			if os.IsNotExist(err) {
-				return fmt.Errorf("specs root %s does not exist; initialize docs/specs before running Helm", specsRoot)
+				return fmt.Errorf("specs root %s does not exist; run `helm scaffold` to create specs/ before running Helm", specsRoot)
 			}
 			return fmt.Errorf("stat specs root: %w", err)
 		}
@@ -144,14 +148,65 @@ func newRunCmd() *cobra.Command {
 }
 
 func newSpecCmd() *cobra.Command {
-	return &cobra.Command{
+	var filePath string
+	var planPath string
+	cmd := &cobra.Command{
 		Use:   "spec",
-		Short: "Inspect specs",
+		Short: "Split large specs into incremental ones",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "spec not implemented yet")
+			settings, err := settingsFromContext(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			root, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("determine working directory: %w", err)
+			}
+			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
+
+			var initial string
+			if filePath != "" {
+				data, err := os.ReadFile(filePath)
+				if err != nil {
+					return fmt.Errorf("read spec file %s: %w", filePath, err)
+				}
+				initial = string(data)
+			}
+
+			acceptance := workspaceAcceptanceCommands(specsRoot)
+			if len(acceptance) == 0 {
+				acceptance = cloneStrings(settings.AcceptanceCommands)
+			}
+			if len(acceptance) == 0 {
+				acceptance = innerscaffold.DefaultAcceptanceCommands()
+			}
+
+			result, err := specsplittui.Run(specsplittui.Options{
+				SpecsRoot:          specsRoot,
+				GuidePath:          filepath.Join(specsRoot, "spec-splitting-guide.md"),
+				AcceptanceCommands: acceptance,
+				CodexChoice:        settings.CodexSplit,
+				InitialInput:       initial,
+				PlanPath:           planPath,
+			})
+			if err != nil {
+				if errors.Is(err, specsplittui.ErrCanceled) {
+					fmt.Fprintln(cmd.OutOrStdout(), "Spec split canceled.")
+					return nil
+				}
+				return err
+			}
+			if result != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "Created %d spec(s).\n", len(result.Specs))
+			}
 			return nil
 		},
 	}
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "optional path to a spec text file to preload")
+	cmd.Flags().StringVar(&planPath, "plan-file", "", "dev: provide a JSON plan instead of calling Codex")
+	_ = cmd.Flags().MarkHidden("plan-file")
+	return cmd
 }
 
 func newStatusCmd() *cobra.Command {
@@ -184,4 +239,29 @@ func settingsFromContext(ctx context.Context) (*config.Settings, error) {
 		return nil, errors.New("CLI settings not initialized; run from a Helm workspace")
 	}
 	return settings, nil
+}
+
+func workspaceAcceptanceCommands(specsRoot string) []string {
+	if specsRoot == "" {
+		return nil
+	}
+	path := filepath.Join(specsRoot, ".cli-settings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var cfg config.Settings
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+	return cloneStrings(cfg.AcceptanceCommands)
+}
+
+func cloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
 }

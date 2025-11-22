@@ -27,7 +27,7 @@ type Result struct {
 	Skipped   []string
 }
 
-// Run provisions the docs/specs workspace based on the supplied answers.
+// Run provisions the specs workspace based on the supplied answers.
 func Run(root string, answers Answers) (*Result, error) {
 	if root == "" {
 		root = "."
