@@ -50,6 +50,7 @@ Implement the Breakdown pane of the TUI (accessible from the home navigation) an
 
 5. **Completion State**
    - Show a summary table of created specs (ID, name, deps) plus warnings for skipped/overwritten items. Offer `r` to jump to Run (keeping the shell running), `n` to start another split, or `esc/q` to return home.
+   - Capture the first `session id:` line emitted by Codex stdout during the split request, show a persistent hint “Resume with: `codex resume <id>`”, and add a keybinding (e.g., `c`) to copy the command to the clipboard in both the running and done phases. Only the first match is used; subsequent matches are ignored to avoid false positives.
 
 ## Acceptance Criteria
 
@@ -66,6 +67,7 @@ Implement the Breakdown pane of the TUI (accessible from the home navigation) an
 - Codex calls for splitting should use a read-only sandbox (`--sandbox read-only`).
 - Provide a dev flag to load a split plan from a local JSON file for tests.
 - Generate into a temp specs root during automated tests so the tracked `docs/specs/` tree is untouched.
+- Clipboard copy should degrade gracefully: if the clipboard cannot be written, at least render the resume command inline so it is visible in the terminal scrollback.
 
 ## Depends on
 

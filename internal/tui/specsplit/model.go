@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -67,6 +69,8 @@ const (
 	phaseDone
 )
 
+var sessionIDRe = regexp.MustCompile(`(?i)^session id:\s*([a-f0-9-]{36})$`)
+
 type model struct {
 	opts  Options
 	phase phase
@@ -89,6 +93,9 @@ type model struct {
 	logs        []string
 	stream      <-chan tea.Msg
 	cancelSplit context.CancelFunc
+	sessionID   string
+	resumeCmd   string
+	flash       string
 }
 
 func newModel(opts Options) *model {
@@ -201,6 +208,9 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = phaseRunning
 			m.running = true
 			m.logs = nil
+			m.flash = ""
+			m.sessionID = ""
+			m.resumeCmd = ""
 			m.vp.SetContent("")
 			return m, tea.Batch(m.spinner.Tick, startSplitCmd(m.opts, m.ta.Value()))
 		case tea.KeyCtrlC:
@@ -232,6 +242,12 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		if key.String() == "c" && m.resumeCmd != "" {
+			m.setFlash(m.copyResumeCommand())
+			return m, nil
+		}
+	}
 	switch v := msg.(type) {
 	case splitLogMsg:
 		m.appendLog(v)
@@ -268,8 +284,14 @@ func (m *model) updateDone(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = nil
 			m.err = nil
 			m.logs = nil
+			m.flash = ""
 			m.vp.SetContent("")
 			return m, nil
+		case "c":
+			if m.resumeCmd != "" {
+				m.setFlash(m.copyResumeCommand())
+				return m, nil
+			}
 		case "q", "enter", "esc":
 			return m, tea.Quit
 		}
@@ -281,6 +303,7 @@ func (m *model) appendLog(msg splitLogMsg) {
 	if msg.text == "" {
 		return
 	}
+	m.captureSessionID(msg.text, msg.stream)
 	m.logs = append(m.logs, fmt.Sprintf("%s: %s", msg.stream, msg.text))
 	if len(m.logs) > 2000 {
 		m.logs = m.logs[len(m.logs)-2000:]
@@ -361,6 +384,33 @@ func listenStream(ch <-chan tea.Msg) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+func (m *model) captureSessionID(line, _ string) {
+	if m.sessionID != "" {
+		return
+	}
+	match := sessionIDRe.FindStringSubmatch(strings.TrimSpace(line))
+	if len(match) != 2 {
+		return
+	}
+	m.sessionID = match[1]
+	m.resumeCmd = fmt.Sprintf("codex resume %s", m.sessionID)
+	m.setFlash(fmt.Sprintf("Resume with: %s (press c to copy)", m.resumeCmd))
+}
+
+func (m *model) copyResumeCommand() string {
+	if m.resumeCmd == "" {
+		return "No session id captured yet."
+	}
+	if err := clipboard.WriteAll(m.resumeCmd); err != nil {
+		return fmt.Sprintf("Clipboard unavailable. Command: %s", m.resumeCmd)
+	}
+	return fmt.Sprintf("Copied: %s", m.resumeCmd)
+}
+
+func (m *model) setFlash(msg string) {
+	m.flash = msg
 }
 
 // lineEmitter buffers writes and emits per-line messages to the TUI.

@@ -2,9 +2,12 @@ package run
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -51,6 +54,8 @@ const (
 	phaseResult
 )
 
+var sessionIDRe = regexp.MustCompile(`(?i)^session id:\s*([a-f0-9-]{36})$`)
+
 type model struct {
 	opts           Options
 	phase          phase
@@ -69,6 +74,7 @@ type model struct {
 	running     *runState
 	result      *resultState
 	confirmKill bool
+	flash       string
 }
 
 func newModel(opts Options) (*model, error) {
@@ -224,6 +230,11 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.killProcess()
 				return m, nil
 			}
+		case "c":
+			if m.running != nil && m.running.resumeCmd != "" {
+				m.setFlash(m.copyResumeCommand())
+				return m, nil
+			}
 		case "n", "esc":
 			if m.confirmKill {
 				m.confirmKill = false
@@ -264,6 +275,7 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.running != nil && m.running.spec != nil && m.running.spec.Metadata != nil {
 			result.specID = m.running.spec.Metadata.ID
 			result.specName = m.running.spec.Metadata.Name
+			result.resumeCmd = m.running.resumeCmd
 		}
 		result.exitErr = msg.err
 		result.exitCode = msg.exitCode
@@ -300,11 +312,17 @@ func (m *model) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "q":
 			return m, tea.Quit
+		case "c":
+			if m.result != nil && m.result.resumeCmd != "" {
+				m.setFlash(m.copyResumeCommandResult())
+				return m, nil
+			}
 		case "enter", "r":
 			m.phase = phaseList
 			m.result = nil
 			m.running = nil
 			m.logs = nil
+			m.flash = ""
 			m.viewport.SetContent("")
 			m.confirmKill = false
 			m.resize()
@@ -381,6 +399,7 @@ func (m *model) startRun(folder *specs.SpecFolder) tea.Cmd {
 	m.phase = phaseRunning
 	m.confirmUnmet = false
 	m.logs = nil
+	m.flash = ""
 	m.viewport.SetContent("")
 	m.viewport.GotoTop()
 	m.running = &runState{spec: folder}
@@ -392,7 +411,9 @@ func (m *model) appendLog(msg runnerLogMsg) {
 	if msg.text == "" {
 		return
 	}
-	entry := logEntry{stream: msg.stream, text: strings.TrimRight(msg.text, "\n")}
+	trimmed := strings.TrimRight(msg.text, "\n")
+	entry := logEntry{stream: msg.stream, text: trimmed}
+	m.captureSessionID(trimmed, msg.stream)
 	m.logs = append(m.logs, entry)
 	if len(m.logs) > m.logLimit {
 		m.logs = m.logs[len(m.logs)-m.logLimit:]
@@ -456,6 +477,44 @@ func (m *model) listenForLogs() tea.Cmd {
 	return listenStream(m.stream)
 }
 
+func (m *model) captureSessionID(line, _ string) {
+	if m.running == nil || m.running.sessionID != "" {
+		return
+	}
+	match := sessionIDRe.FindStringSubmatch(strings.TrimSpace(line))
+	if len(match) != 2 {
+		return
+	}
+	id := match[1]
+	m.running.sessionID = id
+	m.running.resumeCmd = fmt.Sprintf("codex resume %s", id)
+	m.setFlash(fmt.Sprintf("Resume with: %s (press c to copy)", m.running.resumeCmd))
+}
+
+func (m *model) copyResumeCommand() string {
+	if m.running == nil || m.running.resumeCmd == "" {
+		return "No session id captured yet."
+	}
+	if err := clipboard.WriteAll(m.running.resumeCmd); err != nil {
+		return fmt.Sprintf("Clipboard unavailable. Command: %s", m.running.resumeCmd)
+	}
+	return fmt.Sprintf("Copied: %s", m.running.resumeCmd)
+}
+
+func (m *model) copyResumeCommandResult() string {
+	if m.result == nil || m.result.resumeCmd == "" {
+		return "No session id captured yet."
+	}
+	if err := clipboard.WriteAll(m.result.resumeCmd); err != nil {
+		return fmt.Sprintf("Clipboard unavailable. Command: %s", m.result.resumeCmd)
+	}
+	return fmt.Sprintf("Copied: %s", m.result.resumeCmd)
+}
+
+func (m *model) setFlash(msg string) {
+	m.flash = msg
+}
+
 func buildLogContent(entries []logEntry) string {
 	var b strings.Builder
 	for i, entry := range entries {
@@ -485,6 +544,8 @@ type runState struct {
 	finished      bool
 	exitErr       error
 	exitCode      int
+	sessionID     string
+	resumeCmd     string
 }
 
 type resultState struct {
@@ -495,4 +556,5 @@ type resultState struct {
 	exitCode  int
 	err       error
 	remaining []string
+	resumeCmd string
 }

@@ -36,7 +36,17 @@ func runningView(m *model) string {
 	if m.opts.PlanPath != "" {
 		status = fmt.Sprintf("Reading plan from %s...", m.opts.PlanPath)
 	}
-	return fmt.Sprintf("%s %s\n\n%s", m.spinner.View(), status, m.vp.View())
+	lines := []string{
+		fmt.Sprintf("%s %s", m.spinner.View(), status),
+	}
+	if m.resumeCmd != "" {
+		lines = append(lines, fmt.Sprintf("Resume: %s  [c] copy", m.resumeCmd))
+	}
+	if m.flash != "" {
+		lines = append(lines, m.flash)
+	}
+	lines = append(lines, "", m.vp.View())
+	return strings.Join(lines, "\n")
 }
 
 func doneView(m *model) string {
@@ -44,6 +54,12 @@ func doneView(m *model) string {
 		lines := []string{
 			"Split failed:",
 			m.err.Error(),
+		}
+		if m.resumeCmd != "" {
+			lines = append(lines, fmt.Sprintf("Resume: %s  [c] copy", m.resumeCmd))
+		}
+		if m.flash != "" {
+			lines = append(lines, m.flash)
 		}
 		if len(m.logs) > 0 {
 			lines = append(lines, "", "Recent logs:")
@@ -60,6 +76,12 @@ func doneView(m *model) string {
 		"Spec split complete!",
 		"",
 		renderSummaryTable(m.result.Specs),
+	}
+	if m.resumeCmd != "" {
+		lines = append(lines, fmt.Sprintf("Resume: %s  [c] copy", m.resumeCmd))
+	}
+	if m.flash != "" {
+		lines = append(lines, m.flash)
 	}
 	if len(m.result.Warnings) > 0 {
 		lines = append(lines, "", "Warnings:")

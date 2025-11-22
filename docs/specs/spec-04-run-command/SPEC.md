@@ -49,9 +49,10 @@ Build the Bubble Tea TUI that is the primary interface for Helm. When the repo i
 4. **Execution Flow**
    - When confirmed, invoke the Go runner from spec-03 (not the Node script) in a subprocess or goroutine so the TUI stays responsive.
    - Stream stdout/stderr into a scrollable viewport during execution.
-   - Provide cancel handling: `q` during execution asks for confirmation before terminating the process.
-   - After runner exit, reload metadata for that spec and show a Result view summarizing DONE vs IN PROGRESS and any remaining tasks parsed from the latest report.
-   - Returning from Result refreshes the list with updated statuses.
+- Provide cancel handling: `q` during execution asks for confirmation before terminating the process.
+- After runner exit, reload metadata for that spec and show a Result view summarizing DONE vs IN PROGRESS and any remaining tasks parsed from the latest report.
+- Returning from Result refreshes the list with updated statuses.
+- While the runner is streaming, capture the **first** `session id:` line printed by Codex stdout (case-insensitive, 36-char GUID). Surface a “Resume with: `codex resume <id>`” hint once captured, add a keybinding (e.g., `c`) to copy the command to the clipboard, and show the same command in the Result view and on exit so it’s never lost.
 
 5. **Error Handling**
    - If the runner exits non-zero, show the error and keep logs visible; allow the user to return to the list.
@@ -75,6 +76,7 @@ Build the Bubble Tea TUI that is the primary interface for Helm. When the repo i
 - Keep shared styling (badges, headers) reusable so spec-05 and spec-06 panes can plug into the shell.
 - Limit in-memory log buffer (e.g., last N lines) to keep the TUI responsive.
 - Home navigation should be easy to extend (e.g., using a simple enum and switch) without coupling pane implementations.
+- Session id detection must run once per run: ignore any later matching lines after the first capture to avoid false positives.
 
 ## Depends on
 

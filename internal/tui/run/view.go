@@ -155,12 +155,21 @@ func (m *model) runningView() string {
 	if m.running.attempt > 0 && m.running.totalAttempts > 0 {
 		attemptLine = fmt.Sprintf("Attempt %d of %d", m.running.attempt, m.running.totalAttempts)
 	}
+	resumeLine := ""
+	if m.running.resumeCmd != "" {
+		resumeLine = theme.HintStyle.Render(fmt.Sprintf("Resume: %s  [c] copy", m.running.resumeCmd))
+	}
 	lines := []string{
 		title,
 		theme.HintStyle.Render(attemptLine + "  •  Press q to stop, PgUp/PgDn to scroll"),
-		"",
-		m.viewport.View(),
 	}
+	if resumeLine != "" {
+		lines = append(lines, resumeLine)
+	}
+	if m.flash != "" {
+		lines = append(lines, theme.HintStyle.Render(m.flash))
+	}
+	lines = append(lines, "", m.viewport.View())
 	if m.confirmKill {
 		lines = append(lines, "", theme.WarningStyle.Render("Stop this run and terminate implement-spec? [y/N]"))
 	}
@@ -192,6 +201,12 @@ func (m *model) resultView() string {
 		for _, task := range m.result.remaining {
 			lines = append(lines, fmt.Sprintf("- %s", task))
 		}
+	}
+	if m.result.resumeCmd != "" {
+		lines = append(lines, "", theme.HintStyle.Render(fmt.Sprintf("Resume: %s  [c] copy", m.result.resumeCmd)))
+	}
+	if m.flash != "" {
+		lines = append(lines, theme.HintStyle.Render(m.flash))
 	}
 	lines = append(lines, "", theme.HintStyle.Render("Press enter/r to return to list, q to quit."), "", m.viewport.View())
 	return strings.Join(lines, "\n")
