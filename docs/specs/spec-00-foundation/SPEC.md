@@ -80,6 +80,10 @@ Establish the foundational Go module and CLI entrypoint for the Cross-Project Sp
   - `make build` produces a `bin/helm` binary.
   - `make deps`, `make test`, and `make vet` wrap the corresponding Go tooling.
   - `make all` runs deps → tidy → vet → test → build for a quick local verification pass.
+  - `make release` cross-compiles into `dist/helm_<GOOS>_<GOARCH>[.exe]` for common platforms (macOS, Linux, Windows on amd64/arm64).
+  - `make clean` removes `bin/` and `dist/` artifacts.
+  - CI should invoke setup via the shared `.github/actions/setup-go` composite and run vet/test/build as separate steps (not `make all`) for clearer debugging.
+  - Releases should run in a dedicated workflow that reuses the shared setup action, runs vet/test/build, then `make release`, and uploads artifacts from `dist/`.
 
 ## Depends on
 
