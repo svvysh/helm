@@ -30,6 +30,7 @@ Example spec folders:
 - `spec-04-run-command/` — TUI home and Run pane integration.
 - `spec-05-spec-splitting-command/` — Breakdown/`split` pane.
 - `spec-06-status-command/` — Status pane and dependency graph.
+- `spec-07-tui-ux-refresh/` — Modern cohesive TUI theme and component system using Bubble Tea ecosystem libraries.
 
 ## Using this workspace
 
