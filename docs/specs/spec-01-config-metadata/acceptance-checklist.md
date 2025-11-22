@@ -2,8 +2,7 @@
 
 ## Automated commands
 
-- [ ] `go test ./...` passes.
-- [ ] `go vet ./...` passes.
+- [ ] `make all` passes.
 
 ## Manual checks
 
