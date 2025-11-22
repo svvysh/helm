@@ -11,16 +11,15 @@ func introView() string {
 	return strings.Join([]string{
 		"helm spec — split large specs",
 		"",
-		"This command collects a large spec (paste or file) and asks Codex to split it into smaller Helm specs.",
-		"You'll preview the first chunk, confirm, and then Helm will generate new spec folders under specs/.",
+		"This command collects a large spec (paste or file) and streams Codex progress while it generates smaller Helm specs.",
 		"",
-		"Press Enter to begin or Ctrl+C to exit.",
+		"Keys: Enter begin, q/Esc quit.",
 	}, "\n") + "\n"
 }
 
 func inputView(m *model) string {
 	lines := []string{
-		"Paste the full spec below. Press Ctrl+D when you're ready to preview, Ctrl+C to cancel.",
+		"Paste the full spec below. Enter = split, Ctrl+O = load file (path in box), Ctrl+L = clear, q/Esc = quit.",
 	}
 	if m.opts.PlanPath != "" {
 		lines = append(lines, fmt.Sprintf("Dev mode: plan will be loaded from %s", m.opts.PlanPath))
@@ -32,47 +31,29 @@ func inputView(m *model) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-func previewView(m *model) string {
-	header := []string{
-		"Previewing spec (first ~60 lines).",
-		"Enter = split, b = edit, Esc = edit.",
-	}
-	if m.opts.PlanPath != "" {
-		header = append(header, fmt.Sprintf("Plan source: %s", m.opts.PlanPath))
-	} else if m.opts.CodexChoice.Model != "" {
-		detail := fmt.Sprintf("Codex model: %s", m.opts.CodexChoice.Model)
-		if m.opts.CodexChoice.Reasoning != "" {
-			detail = fmt.Sprintf("%s (reasoning %s)", detail, m.opts.CodexChoice.Reasoning)
-		}
-		header = append(header, detail)
-	}
-	header = append(header, "")
-	preview := strings.Join(m.preview, "\n")
-	return strings.Join(append(header, preview), "\n") + "\n"
-}
-
 func runningView(m *model) string {
-	status := "Requesting Codex split plan..."
+	status := "Splitting via Codex..."
 	if m.opts.PlanPath != "" {
 		status = fmt.Sprintf("Reading plan from %s...", m.opts.PlanPath)
 	}
-	if m.opts.CodexChoice.Model != "" && m.opts.PlanPath == "" {
-		status = fmt.Sprintf("Codex %s split in progress...", m.opts.CodexChoice.Model)
-	}
-	return fmt.Sprintf("%s %s\n\nPress Ctrl+C to abort.", m.spinner.View(), status)
+	return fmt.Sprintf("%s %s\n\n%s", m.spinner.View(), status, m.vp.View())
 }
 
 func doneView(m *model) string {
 	if m.err != nil {
-		return strings.Join([]string{
+		lines := []string{
 			"Split failed:",
 			m.err.Error(),
-			"",
-			"Press Enter to exit.",
-		}, "\n") + "\n"
+		}
+		if len(m.logs) > 0 {
+			lines = append(lines, "", "Recent logs:")
+			lines = append(lines, renderLogTail(m.logs, 15))
+		}
+		lines = append(lines, "", "Press Enter/q/Esc to exit, n to split another, r to jump to Run.")
+		return strings.Join(lines, "\n") + "\n"
 	}
 	if m.result == nil {
-		return "No specs were created. Press Enter to exit.\n"
+		return "No specs were created. Press Enter/q/Esc to exit.\n"
 	}
 
 	lines := []string{
@@ -86,7 +67,10 @@ func doneView(m *model) string {
 			lines = append(lines, fmt.Sprintf("- %s", warn))
 		}
 	}
-	lines = append(lines, "", "Press Enter or q to exit.")
+	if len(m.logs) > 0 {
+		lines = append(lines, "", "Recent logs:", renderLogTail(m.logs, 15))
+	}
+	lines = append(lines, "", "Keys: Enter/q/Esc exit, r jump to Run, n split another.")
 	return strings.Join(lines, "\n") + "\n"
 }
 
@@ -112,4 +96,14 @@ func renderSummaryTable(specs []splitting.GeneratedSpec) string {
 		rows = append(rows, fmt.Sprintf("%-*s  %-*s  %s", idWidth, spec.ID, nameWidth, spec.Name, deps))
 	}
 	return strings.Join(rows, "\n")
+}
+
+func renderLogTail(lines []string, max int) string {
+	if len(lines) == 0 {
+		return "(no logs)"
+	}
+	if len(lines) > max {
+		lines = lines[len(lines)-max:]
+	}
+	return strings.Join(lines, "\n")
 }

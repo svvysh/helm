@@ -24,6 +24,7 @@ var (
 	badgeProgress = badgeBase.Foreground(lipgloss.Color("16")).Background(lipgloss.Color("148"))
 	badgeDone     = badgeBase.Foreground(lipgloss.Color("16")).Background(lipgloss.Color("120"))
 	badgeBlocked  = badgeBase.Foreground(lipgloss.Color("231")).Background(lipgloss.Color("124"))
+	badgeFailed   = badgeBase.Foreground(lipgloss.Color("231")).Background(lipgloss.Color("196"))
 )
 
 type specItem struct {
@@ -126,6 +127,8 @@ func statusBadge(folder *specs.SpecFolder) (string, lipgloss.Style) {
 		return "IN PROGRESS", badgeProgress
 	case metadata.StatusBlocked:
 		return "BLOCKED", badgeBlocked
+	case metadata.StatusFailed:
+		return "FAILED", badgeFailed
 	case metadata.StatusTodo:
 		if len(folder.UnmetDeps) > 0 {
 			return "BLOCKED", badgeBlocked

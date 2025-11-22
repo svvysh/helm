@@ -19,8 +19,6 @@ The refined product model is **TUI-first**:
 
 - `implement.prompt-template.md` — worker prompt template (strict/parallel handled by settings).
 - `review.prompt-template.md` — verifier prompt template.
-- `implement-spec.mjs` — Node runner that loops worker → verifier.
-- `spec-splitting-guide.md` — guidance for splitting large specs.
 - `.cli-settings.json` — legacy defaults (kept for reference; new flow persists per-repo config in `helm.config.json`).
 
 Example spec folders:
@@ -36,8 +34,7 @@ Example spec folders:
 ## Using this workspace
 
 1. Pick a spec folder whose `metadata.json.status` is "todo" and whose dependencies are "done".
-2. Use `implement-spec.mjs` to orchestrate implementation during development:
-   - `node docs/specs/implement-spec.mjs docs/specs/spec-00-foundation`
+2. Use the Go runner (`helm run --exec <spec-id>` in headless mode or via the TUI) to execute a spec.
 3. Follow the remaining tasks reported by the verifier until `STATUS: ok`.
 
-The Go TUI (`helm`) will ultimately automate this flow across the home, Run, Breakdown, and Status panes.
+The Go TUI (`helm`) automates this flow across the home, Run, Breakdown, and Status panes.

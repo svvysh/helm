@@ -87,7 +87,7 @@ func ComputeDependencyState(specs []*SpecFolder) {
 			continue
 		}
 
-		if spec.Metadata.Status == metadata.StatusDone {
+		if spec.Metadata.Status == metadata.StatusDone || spec.Metadata.Status == metadata.StatusInProgress {
 			continue
 		}
 

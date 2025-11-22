@@ -22,7 +22,7 @@ Implement the Status pane within the TUI shell (spec-04) and the `helm status` e
    - `tab` (or another key) toggles between graph and table view; `q` returns to the home menu.
 
 2. **Summary Counts**
-   - Display counts for TODO, IN PROGRESS, DONE, BLOCKED (BLOCKED = unmet deps while not done) at the top of the pane.
+   - Display counts for TODO, IN PROGRESS, DONE, FAILED, BLOCKED (BLOCKED = unmet deps while not done; FAILED = exhausted max attempts without STATUS: ok) at the top of the pane.
 
 3. **Dependency Graph View**
    - Render an ASCII tree of specs and their dependencies (same formatting as the previous spec version).
@@ -57,6 +57,7 @@ Implement the Status pane within the TUI shell (spec-04) and the `helm status` e
 
 - Reuse styling helpers from the Run pane for badges and headings.
 - Keep rendering efficient for dozens of specs.
+- Specs with status FAILED remain rerunnable (when deps are met); IN PROGRESS and DONE should not be runnable.
 
 ## Depends on
 

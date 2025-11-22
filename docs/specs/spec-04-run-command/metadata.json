@@ -8,7 +8,7 @@
     "spec-02-scaffold-command",
     "spec-03-implement-runner"
   ],
-  "notes": "\n[2025-11-22T11:46:51.324Z] attempt 1 status=ok: ok\n[2025-11-22] spec refactored for home navigation (Run/Breakdown/Status) and next-available execution.",
+  "notes": "\n[2025-11-22T11:46:51.324Z] attempt 1 status=ok: ok\n[2025-11-22] spec refactored for home navigation (Run/Breakdown/Status) and next-available execution.\n[2025-11-22] Run pane now uses Go runner only (Node runner removed from scaffold).",
   "acceptanceCommands": [
     "make all"
   ],

@@ -61,7 +61,6 @@ type model struct {
 	commandInput  textinput.Model
 	specsRoot     textinput.Model
 	focusIndex    int
-	makeGraph     bool
 	optionsErr    string
 	result        *innerscaffold.Result
 	spinner       spinner.Model
@@ -129,16 +128,35 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.running && m.step == stepRunning {
-		return m.updateRunning(msg)
-	}
-
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if keyCancel(msg) {
+		// Global quit with q / ctrl+c; Esc navigates back one step if possible, otherwise cancels.
+		if msg.String() == "q" || msg.Type == tea.KeyCtrlC {
 			m.cancelled = true
 			return m, tea.Quit
 		}
+		if msg.Type == tea.KeyEsc {
+			if m.running {
+				m.cancelled = true
+				return m, tea.Quit
+			}
+			if prev, ok := previousStep(m.step); ok {
+				m.step = prev
+				m.running = false
+				m.optionsErr = ""
+				if m.step == stepOptions {
+					m.focusIndex = 0
+					m.specsRoot.Focus()
+				}
+				return m, nil
+			}
+			m.cancelled = true
+			return m, tea.Quit
+		}
+	}
+
+	if m.running && m.step == stepRunning {
+		return m.updateRunning(msg)
 	}
 
 	switch m.step {
@@ -168,11 +186,29 @@ func keyCancel(msg tea.KeyMsg) bool {
 	}
 }
 
+func previousStep(s step) (step, bool) {
+	switch s {
+	case stepMode:
+		return stepIntro, true
+	case stepCommands:
+		return stepMode, true
+	case stepOptions:
+		return stepCommands, true
+	case stepConfirm:
+		return stepOptions, true
+	case stepRunning, stepComplete:
+		return stepConfirm, true
+	default:
+		return 0, false
+	}
+}
+
 func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyEnter {
 			m.step = stepMode
+			m.optionsErr = ""
 		}
 	}
 	return m, nil
@@ -201,6 +237,9 @@ func (m *model) updateCommands(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if value == "" {
 				m.step = stepOptions
+				m.focusIndex = 0
+				m.specsRoot.Focus()
+				m.optionsErr = ""
 				return m, nil
 			}
 			m.commands = append(m.commands, value)
@@ -220,29 +259,24 @@ func (m *model) updateOptions(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "tab", "down":
-			m.focusIndex = (m.focusIndex + 1) % 2
-		case "up", "shift+tab":
-			m.focusIndex = (m.focusIndex - 1 + 2) % 2
 		case "enter":
 			if m.focusIndex == 0 {
 				if err := m.validateSpecsRoot(); err != nil {
 					m.optionsErr = err.Error()
 					break
 				}
+				m.optionsErr = ""
+				m.specsRoot.Blur()
 				m.step = stepConfirm
-			} else {
-				m.makeGraph = !m.makeGraph
-			}
-		case " ":
-			if m.focusIndex == 1 {
-				m.makeGraph = !m.makeGraph
 			}
 		}
 	}
+	m.syncFocus()
 	var cmd tea.Cmd
 	if m.focusIndex == 0 {
 		m.specsRoot, cmd = m.specsRoot.Update(msg)
+	} else {
+		m.specsRoot.Blur()
 	}
 	return m, cmd
 }
@@ -310,7 +344,7 @@ func (m *model) View() string {
 	case stepCommands:
 		return commandsView(m.commands, m.commandInput.View())
 	case stepOptions:
-		return optionsView(m.specsRoot.View(), m.focusIndex, m.makeGraph, m.optionsErr)
+		return optionsView(m.specsRoot.View(), m.focusIndex, m.optionsErr)
 	case stepConfirm:
 		return confirmView(m.answers())
 	case stepRunning:
@@ -332,10 +366,9 @@ func (m *model) answers() innerscaffold.Answers {
 	}
 	mode := m.modeChoices[m.modeIndex]
 	return innerscaffold.Answers{
-		Mode:                mode,
-		AcceptanceCommands:  trimmed,
-		SpecsRoot:           strings.TrimSpace(m.specsRoot.Value()),
-		GenerateSampleGraph: m.makeGraph,
+		Mode:               mode,
+		AcceptanceCommands: trimmed,
+		SpecsRoot:         strings.TrimSpace(m.specsRoot.Value()),
 	}
 }
 
@@ -348,5 +381,14 @@ func runScaffoldCmd(root string, answers innerscaffold.Answers) tea.Cmd {
 	return func() tea.Msg {
 		res, err := innerscaffold.Run(root, answers)
 		return scaffoldFinishedMsg{result: res, err: err}
+	}
+}
+
+// syncFocus keeps the specs root input focused when selected.
+func (m *model) syncFocus() {
+	if m.focusIndex == 0 {
+		m.specsRoot.Focus()
+	} else {
+		m.specsRoot.Blur()
 	}
 }

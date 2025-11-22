@@ -113,8 +113,8 @@ func TestRunnerMissingPropagatesRemainingTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadMetadata() error = %v", err)
 	}
-	if meta.Status != metadata.StatusInProgress {
-		t.Fatalf("metadata status = %s, want in-progress", meta.Status)
+	if meta.Status != metadata.StatusFailed {
+		t.Fatalf("metadata status = %s, want failed", meta.Status)
 	}
 	if !strings.Contains(meta.Notes, "write tests") {
 		t.Fatalf("notes missing remaining tasks: %s", meta.Notes)

@@ -2,7 +2,6 @@ package run
 
 import (
 	"errors"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -174,6 +173,9 @@ func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if item == nil {
 				return m, nil
 			}
+			if !canStartRun(item.folder) {
+				return m, nil
+			}
 			if len(item.folder.UnmetDeps) > 0 {
 				m.confirmUnmet = true
 				return m, nil
@@ -184,6 +186,9 @@ func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmUnmet = false
 				item := m.currentItem()
 				if item != nil {
+					if !canStartRun(item.folder) {
+						return m, nil
+					}
 					return m, m.startRun(item.folder)
 				}
 			}
@@ -242,7 +247,6 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.running = nil
 			return m, nil
 		}
-		m.running.cmd = msg.cmd
 		m.stream = msg.stream
 		return m, m.listenForLogs()
 	case runnerLogMsg:
@@ -404,10 +408,7 @@ func (m *model) appendLog(msg runnerLogMsg) {
 }
 
 func (m *model) killProcess() {
-	if m.running == nil || m.running.cmd == nil {
-		return
-	}
-	_ = m.running.cmd.Process.Kill()
+	// Go runner is not cancelable yet; just clear the confirmation flag.
 	m.confirmKill = false
 }
 
@@ -424,6 +425,18 @@ func (m *model) selectByID(id string) {
 			m.list.Select(idx)
 			return
 		}
+	}
+}
+
+func canStartRun(folder *specs.SpecFolder) bool {
+	if folder == nil || folder.Metadata == nil {
+		return false
+	}
+	switch folder.Metadata.Status {
+	case metadata.StatusDone, metadata.StatusInProgress:
+		return false
+	default:
+		return true
 	}
 }
 
@@ -467,7 +480,6 @@ type logEntry struct {
 
 type runState struct {
 	spec          *specs.SpecFolder
-	cmd           *exec.Cmd
 	attempt       int
 	totalAttempts int
 	finished      bool

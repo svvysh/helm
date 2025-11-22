@@ -9,7 +9,7 @@ Build the Bubble Tea TUI that is the primary interface for Helm. When the repo i
 - Launch the TUI only from `helm` (root).
 - If `NeedsInitialization` is true, route to the scaffold gate from spec-02 and show nothing else.
 - Provide a home navigation bar (e.g., tabs or buttons) for Run / Breakdown / Status panes.
-- Implement the Run pane: discover specs, show statuses, allow filtering, and run a selected spec via the Go runner (spec-03).
+- Implement the Run pane: discover specs, show statuses, allow filtering, and run a selected spec via the Go runner (spec-03) with no Node runner dependency.
 - Add a shortcut to run the “next available” spec (first runnable in dependency order).
 
 ## Non-Goals

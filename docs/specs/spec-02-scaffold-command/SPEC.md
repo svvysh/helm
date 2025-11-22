@@ -8,8 +8,9 @@ Implement the initialization flow that runs when a repo is not yet set up for He
 
 - Detect an uninitialized repo using `helm.config.json` and the presence of the specs root directory.
 - Present a minimal first-run TUI gate that only offers to scaffold the specs root (default `specs/`).
-- Create the specs workspace (templates, runner script, example spec) without clobbering existing files.
+- Create the specs workspace (templates, example spec, and guides) without clobbering existing files.
 - Persist `Initialized=true` and the chosen specs root back to `helm.config.json`, with guidance on how to re-run scaffold (delete the config file).
+- Provide clear navigation hints on every screen (Enter to advance, Esc to go back, `q` to quit) and ensure canceling at any step leaves no `helm.config.json` behind.
 
 ## Non-Goals
 
@@ -27,6 +28,7 @@ Implement the initialization flow that runs when a repo is not yet set up for He
    - Show text similar to: "Helm has not been initialized in this repo. Scaffold `<specsRoot>` now?"
    - Default `specsRoot` comes from config (default `specs/` if unset). Allow the user to edit it before confirming.
    - Buttons: `Yes, scaffold` and `Quit`. If the user cancels, exit with a helpful message.
+   - Hints: show keyboard help (Enter to advance, Esc to go back/quit, `q` to quit).
 
 3. **Scaffold Steps (upon confirmation)**
    - Create the specs root directory (and parents) if missing.
@@ -35,10 +37,10 @@ Implement the initialization flow that runs when a repo is not yet set up for He
      - `.cli-settings.json` (legacy defaults derived from repo config values)
      - `implement.prompt-template.md`
      - `review.prompt-template.md`
-     - `implement-spec.mjs`
-     - `spec-splitting-guide.md`
+     - `specs-breakdown-guide.md`
      - `spec-00-example/` folder with `SPEC.md`, `acceptance-checklist.md`, `metadata.json`, `implementation-report.md`.
    - Do **not** overwrite files that already exist; instead surface a summary of skipped files. Overwrite policy can be revisited later but is not required now.
+   - The "Generate sample dependency graph" toggle uses **space** to toggle; **enter** continues to confirmation so keyboard users can advance without changing the toggle.
 
 4. **Config Persistence**
    - After successful scaffold:
@@ -47,6 +49,7 @@ Implement the initialization flow that runs when a repo is not yet set up for He
      - Keep any user-provided `AcceptanceCommands`, `Mode`, and Codex choices in the config.
      - Save to `<repo>/helm.config.json`.
    - Show a short note: "To scaffold again and overwrite, delete helm.config.json and rerun Helm."
+   - If the user cancels anywhere before completion, do not write or modify `helm.config.json`.
 
 5. **CLI Entrypoint Behavior**
    - `helm scaffold` launches the same TUI gate. If the repo is already initialized, show a short message pointing to the main TUI instead of running scaffold again.
@@ -55,10 +58,11 @@ Implement the initialization flow that runs when a repo is not yet set up for He
 ## Acceptance Criteria
 
 - `go test ./...` and `go vet ./...` succeed.
-- Running `go run ./cmd/helm` in a temp repo with no `helm.config.json` presents only the initialization prompt and lets the user edit the specs root before confirming.
-- After choosing `Yes`, the specs root is created with all listed files, none of the pre-existing files are overwritten, and `helm.config.json` is written with `initialized=true` and the chosen `specsRoot`.
-- If the user cancels, the process exits cleanly with a hint to rerun Helm when ready.
-- Re-running `helm` after initialization skips the scaffold gate and proceeds to the home menu (spec-04).
+   - Running `go run ./cmd/helm` in a temp repo with no `helm.config.json` presents only the initialization prompt and lets the user edit the specs root before confirming.
+   - After choosing `Yes`, the specs root is created with all listed files, none of the pre-existing files are overwritten, and `helm.config.json` is written with `initialized=true` and the chosen `specsRoot`.
+   - If the user cancels, the process exits cleanly with a hint to rerun Helm when ready.
+   - Re-running `helm` after initialization skips the scaffold gate and proceeds to the home menu (spec-04).
+   - All scaffold screens display keyboard hints; Esc moves to the previous screen (or cancels from intro/running), `q` quits immediately, and Space toggles the sample-graph checkbox while Enter advances from the options screen.
 
 ## Implementation Notes
 

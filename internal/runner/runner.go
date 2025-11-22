@@ -204,24 +204,27 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 		remaining = newRemaining
 	}
 
+	failTime := clock().UTC()
+	if err := markFailed(spec, remaining, maxAttempts, failTime); err != nil {
+		return err
+	}
+
 	return fmt.Errorf("exhausted %d attempts without STATUS: ok", maxAttempts)
 }
 
 func workerArgs(choice config.CodexChoice) []string {
 	args := []string{"exec", "--dangerously-bypass-approvals-and-sandbox", "--model", choice.Model}
 	if choice.Reasoning != "" {
-		args = append(args, "--reasoning", choice.Reasoning)
+		args = append(args, "--config", fmt.Sprintf("model_reasoning_effort=%s", choice.Reasoning))
 	}
-	args = append(args, "--stdin")
 	return args
 }
 
 func verifierArgs(choice config.CodexChoice) []string {
 	args := []string{"exec", "--sandbox", "read-only", "--model", choice.Model}
 	if choice.Reasoning != "" {
-		args = append(args, "--reasoning", choice.Reasoning)
+		args = append(args, "--config", fmt.Sprintf("model_reasoning_effort=%s", choice.Reasoning))
 	}
-	args = append(args, "--stdin")
 	return args
 }
 
@@ -403,6 +406,14 @@ func updateMetadata(spec *specResources, status string, remaining []string, work
 		}
 		note := fmt.Sprintf("[%s] attempt %d remaining tasks: %s", now.Format(time.RFC3339), attempt, summary)
 		appendNote(meta, note)
+	case "failed":
+		meta.Status = metadata.StatusFailed
+		summary := "none"
+		if len(remaining) > 0 {
+			summary = strings.Join(remaining, "; ")
+		}
+		note := fmt.Sprintf("[%s] exhausted attempts — remaining: %s", now.Format(time.RFC3339), summary)
+		appendNote(meta, note)
 	default:
 		return fmt.Errorf("unknown status %s", status)
 	}
@@ -434,6 +445,10 @@ func summarizeWorkerOutput(workerOutput string) string {
 		}
 	}
 	return "worker output empty"
+}
+
+func markFailed(spec *specResources, remaining []string, attempts int, now time.Time) error {
+	return updateMetadata(spec, "failed", remaining, "", attempts, now)
 }
 
 func writeReport(spec *specResources, mode config.Mode, maxAttempts, attempt int, status string, remaining []string, workerOutput string) error {

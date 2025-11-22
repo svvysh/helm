@@ -1,14 +1,12 @@
 package run
 
 import (
-	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,12 +14,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/polarzero/helm/internal/config"
+	"github.com/polarzero/helm/internal/runner"
 	"github.com/polarzero/helm/internal/specs"
 )
 
 type runnerStartMsg struct {
-	cmd    *exec.Cmd
 	stream <-chan tea.Msg
 	err    error
 }
@@ -40,70 +37,42 @@ type runnerStreamClosedMsg struct{}
 
 func startRunnerCmd(opts Options, folder *specs.SpecFolder) tea.Cmd {
 	return func() tea.Msg {
-		script := filepath.Join(opts.SpecsRoot, "implement-spec.mjs")
-		if _, err := os.Stat(script); err != nil {
-			return runnerStartMsg{err: fmt.Errorf("implement-spec runner not found at %s: %w", script, err)}
-		}
 		if folder == nil {
 			return runnerStartMsg{err: fmt.Errorf("spec folder is nil")}
 		}
-		cmd := exec.Command("node", script, folder.Path)
-		if opts.Root != "" {
-			cmd.Dir = opts.Root
-		}
-		cmd.Env = buildRunnerEnv(os.Environ(), opts.Settings)
-
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return runnerStartMsg{err: fmt.Errorf("stdout pipe: %w", err)}
-		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			return runnerStartMsg{err: fmt.Errorf("stderr pipe: %w", err)}
-		}
-
-		if err := cmd.Start(); err != nil {
-			return runnerStartMsg{err: err}
-		}
-
 		stream := make(chan tea.Msg)
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go streamPipe(stdout, "stdout", stream, &wg)
-		go streamPipe(stderr, "stderr", stream, &wg)
-		go waitForExit(cmd, stream, &wg)
 
-		return runnerStartMsg{cmd: cmd, stream: stream}
-	}
-}
+		// Line emitters route stdout/stderr into the TUI.
+		outEmitter := newLineEmitter("stdout", stream)
+		errEmitter := newLineEmitter("stderr", stream)
 
-func streamPipe(r io.Reader, label string, ch chan<- tea.Msg, wg *sync.WaitGroup) {
-	defer wg.Done()
-	scanner := bufio.NewScanner(r)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 512*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		ch <- runnerLogMsg{stream: label, text: line}
-	}
-	if err := scanner.Err(); err != nil {
-		ch <- runnerLogMsg{stream: "stderr", text: fmt.Sprintf("[%s reader error] %v", label, err)}
-	}
-}
+		go func() {
+			defer close(stream)
+			defer outEmitter.close()
+			defer errEmitter.close()
 
-func waitForExit(cmd *exec.Cmd, ch chan<- tea.Msg, wg *sync.WaitGroup) {
-	err := cmd.Wait()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = -1
-		}
+			r := &runner.Runner{
+				Root:                      opts.Root,
+				SpecsRoot:                 opts.SpecsRoot,
+				Mode:                      opts.Settings.Mode,
+				MaxAttempts:               opts.Settings.DefaultMaxAttempts,
+				WorkerChoice:              opts.Settings.CodexRunImpl,
+				VerifierChoice:            opts.Settings.CodexRunVer,
+				DefaultAcceptanceCommands: opts.Settings.AcceptanceCommands,
+				Stdout:                    outEmitter,
+				Stderr:                    errEmitter,
+			}
+			// Pass folder ID; runner resolves paths using SpecsRoot.
+			err := r.Run(context.Background(), folder.Metadata.ID)
+			exitCode := 0
+			if err != nil {
+				exitCode = 1
+			}
+			stream <- runnerFinishedMsg{err: err, exitCode: exitCode}
+		}()
+
+		return runnerStartMsg{stream: stream}
 	}
-	wg.Wait()
-	ch <- runnerFinishedMsg{err: err, exitCode: exitCode}
-	close(ch)
 }
 
 func listenStream(ch <-chan tea.Msg) tea.Cmd {
@@ -114,34 +83,6 @@ func listenStream(ch <-chan tea.Msg) tea.Cmd {
 		}
 		return msg
 	}
-}
-
-func buildRunnerEnv(base []string, settings *config.Settings) []string {
-	env := make([]string, len(base))
-	copy(env, base)
-	if settings == nil {
-		return env
-	}
-	if !envHas(env, "MAX_ATTEMPTS") && settings.DefaultMaxAttempts > 0 {
-		env = append(env, fmt.Sprintf("MAX_ATTEMPTS=%d", settings.DefaultMaxAttempts))
-	}
-	if !envHas(env, "CODEX_MODEL_IMPL") && settings.CodexRunImpl.Model != "" {
-		env = append(env, fmt.Sprintf("CODEX_MODEL_IMPL=%s", settings.CodexRunImpl.Model))
-	}
-	if !envHas(env, "CODEX_MODEL_VER") && settings.CodexRunVer.Model != "" {
-		env = append(env, fmt.Sprintf("CODEX_MODEL_VER=%s", settings.CodexRunVer.Model))
-	}
-	return env
-}
-
-func envHas(env []string, key string) bool {
-	prefix := key + "="
-	for _, kv := range env {
-		if strings.HasPrefix(kv, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 var attemptRe = regexp.MustCompile(`Attempt\s+(\d+)\s+of\s+(\d+)`)
@@ -182,4 +123,49 @@ func parseRemainingTasks(reportPath string) []string {
 		return nil
 	}
 	return payload.RemainingTasks
+}
+
+// lineEmitter buffers writes and emits whole lines as runnerLogMsg.
+type lineEmitter struct {
+	stream string
+	ch     chan<- tea.Msg
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	closed bool
+}
+
+func newLineEmitter(stream string, ch chan<- tea.Msg) *lineEmitter {
+	return &lineEmitter{stream: stream, ch: ch}
+}
+
+func (w *lineEmitter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return 0, io.EOF
+	}
+	n, _ := w.buf.Write(p)
+	for {
+		data := w.buf.Bytes()
+		if idx := bytes.IndexByte(data, '\n'); idx >= 0 {
+			line := string(data[:idx])
+			w.ch <- runnerLogMsg{stream: w.stream, text: line}
+			w.buf.Next(idx + 1)
+		} else {
+			break
+		}
+	}
+	return n, nil
+}
+
+func (w *lineEmitter) close() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+	if rem := strings.TrimSpace(w.buf.String()); rem != "" {
+		w.ch <- runnerLogMsg{stream: w.stream, text: rem}
+	}
+	w.closed = true
 }

@@ -14,10 +14,9 @@ import (
 
 // Answers captures the interactive responses collected by the TUI.
 type Answers struct {
-	Mode                config.Mode
-	AcceptanceCommands  []string
-	SpecsRoot           string
-	GenerateSampleGraph bool
+	Mode               config.Mode
+	AcceptanceCommands []string
+	SpecsRoot          string
 }
 
 // Result summarizes how the workspace was scaffolded.
@@ -73,10 +72,10 @@ func Run(root string, answers Answers) (*Result, error) {
 		record(filepath.Join(specsRootAbs, "README.md"), created)
 	}
 
-	if created, err := writeFileIfMissing(filepath.Join(specsRootAbs, "spec-splitting-guide.md"), []byte(specSplittingGuideTemplate()), 0o644); err != nil {
+	if created, err := writeFileIfMissing(filepath.Join(specsRootAbs, "specs-breakdown-guide.md"), []byte(specsBreakdownGuideTemplate()), 0o644); err != nil {
 		return nil, err
 	} else {
-		record(filepath.Join(specsRootAbs, "spec-splitting-guide.md"), created)
+		record(filepath.Join(specsRootAbs, "specs-breakdown-guide.md"), created)
 	}
 
 	implTemplate := buildImplementPrompt(answers.Mode)
@@ -93,13 +92,6 @@ func Run(root string, answers Answers) (*Result, error) {
 		return nil, err
 	} else {
 		record(reviewPath, created)
-	}
-
-	scriptPath := filepath.Join(specsRootAbs, "implement-spec.mjs")
-	if created, err := writeFileIfMissing(scriptPath, []byte(implementRunnerScript()), 0o755); err != nil {
-		return nil, err
-	} else {
-		record(scriptPath, created)
 	}
 
 	settings := &config.Settings{
@@ -159,15 +151,6 @@ func Run(root string, answers Answers) (*Result, error) {
 		return nil, err
 	} else {
 		record(reportPath, created)
-	}
-
-	if answers.GenerateSampleGraph {
-		graphPath := filepath.Join(specsRootAbs, "sample-dependency-graph.json")
-		if created, err := writeFileIfMissing(graphPath, []byte(sampleDependencyGraph()), 0o644); err != nil {
-			return nil, err
-		} else {
-			record(graphPath, created)
-		}
 	}
 
 	sort.Strings(result.Created)

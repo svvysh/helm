@@ -13,10 +13,9 @@ func TestRunCreatesWorkspace(t *testing.T) {
 	root := t.TempDir()
 	os.Setenv("HELM_CONFIG_DIR", filepath.Join(root, ".config"))
 	answers := Answers{
-		Mode:                config.ModeStrict,
-		AcceptanceCommands:  []string{"go test ./..."},
-		SpecsRoot:           "tmp/test-specs",
-		GenerateSampleGraph: true,
+		Mode:               config.ModeStrict,
+		AcceptanceCommands: []string{"go test ./..."},
+		SpecsRoot:          "tmp/test-specs",
 	}
 	result, err := Run(root, answers)
 	if err != nil {
@@ -43,10 +42,6 @@ func TestRunCreatesWorkspace(t *testing.T) {
 	metaPath := filepath.Join(root, "tmp", "test-specs", "spec-00-example", "metadata.json")
 	if _, err := os.Stat(metaPath); err != nil {
 		t.Fatalf("missing example metadata: %v", err)
-	}
-	graphPath := filepath.Join(root, "tmp", "test-specs", "sample-dependency-graph.json")
-	if _, err := os.Stat(graphPath); err != nil {
-		t.Fatalf("missing dependency graph: %v", err)
 	}
 }
 

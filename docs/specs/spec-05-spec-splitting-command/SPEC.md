@@ -2,12 +2,12 @@
 
 ## Summary
 
-Implement the Breakdown pane of the TUI (accessible from the home navigation) and the `helm spec` entrypoint that runs the same flow directly without opening the shell. The pane accepts a large spec (or file), asks Codex for a split plan, and generates `spec-*` folders under the configured specs root.
+Implement the Breakdown pane of the TUI (accessible from the home navigation) and the `helm spec` entrypoint that runs the same flow directly without opening the shell. The pane accepts a large spec (paste or file), streams Codex progress, and generates `spec-*` folders under the configured specs root using the on-disk `specs-breakdown-guide.md`.
 
 ## Goals
 
-- Provide an interactive Bubble Tea flow for pasting a large spec or pointing to a file.
-- Use the `spec-splitting-guide.md` plus repo config acceptance commands to ask Codex for a JSON split plan.
+- Provide an interactive Bubble Tea flow with a single screen that switches phases (input → preview → progress → done) and keeps keyboard hints visible.
+- Use the `specs-breakdown-guide.md` plus repo config acceptance commands to ask Codex for a JSON split plan.
 - Generate spec folders under `RepoConfig.SpecsRoot` with metadata, acceptance checklists, and placeholder reports.
 - Integrate with the TUI shell so navigation returns to Run/Status panes when done.
 
@@ -19,22 +19,18 @@ Implement the Breakdown pane of the TUI (accessible from the home navigation) an
 ## Detailed Requirements
 
 1. **Entry & Navigation**
-- `helm spec` runs the Breakdown flow directly (without the multi-pane shell). From the home navigation (opened via bare `helm`), selecting Breakdown mounts this pane; `q` returns to home.
+   - `helm spec` runs the Breakdown flow directly (without the multi-pane shell). From the home navigation (opened via bare `helm`), selecting Breakdown mounts this pane; `q` or `esc` returns to home.
 
 2. **Input Flow**
-   - Steps inside the pane:
-     1. Intro text explaining what Breakdown does.
-     2. Input step allowing either:
-        - Multi-line paste of a spec, or
-        - Providing a file path (via flag or prompt) read at startup.
-     3. Preview of the first ~50 lines with a confirmation prompt.
-     4. Progress view while the Codex request runs.
-     5. Completion view summarizing created specs (ID, name, deps) and offering a button to jump to the Run pane.
-   - Keyboard: Up/Down or tab between controls, enter to confirm, esc/ctrl+c to cancel back to home.
+   - Single-screen UI with phases:
+     1) Input: multiline editor with placeholder; `Ctrl+O` loads a file path typed into the box; `Ctrl+L` clears; `Enter` starts splitting; `esc/q` cancels.
+     2) Progress: spinner + **live Codex stdout/stderr only** (no spec-text preview); `esc/q` cancels request if still in flight.
+     3) Done: table of generated specs (ID, name, deps), warnings, and recent logs (tail ~15 lines); actions `r` → jump to Run pane, `n` → new split, `enter/q/esc` → exit.
+   - Keyboard hints persist: `enter` primary action, `esc/q` back/quit, `Ctrl+O` load file, `Ctrl+L` clear, `r` run, `n` new split.
 
 3. **Codex Split Plan**
    - Build the prompt using:
-     - `spec-splitting-guide.md` from the specs root.
+     - `specs-breakdown-guide.md` from the specs root.
      - The raw pasted/file content.
      - Acceptance commands from `RepoConfig.AcceptanceCommands`.
    - Ask Codex to return JSON of the form:
@@ -53,15 +49,16 @@ Implement the Breakdown pane of the TUI (accessible from the home navigation) an
    - Do not overwrite existing spec folders without explicit confirmation; skip and report any collisions.
 
 5. **Completion State**
-   - Show a summary table of created specs (ID, name, deps) and allow pressing a key/button to jump directly to the Run pane (keeping the shell running) or return home.
+   - Show a summary table of created specs (ID, name, deps) plus warnings for skipped/overwritten items. Offer `r` to jump to Run (keeping the shell running), `n` to start another split, or `esc/q` to return home.
 
 ## Acceptance Criteria
 
 - `go test ./...` and `go vet ./...` succeed.
-- Running `go run ./cmd/helm split` in an initialized temp repo opens the Breakdown pane.
+- Running `go run ./cmd/helm spec` in an initialized temp repo opens the Breakdown pane.
 - Past­ing a sample spec or pointing to a file triggers a Codex request and generates spec folders under the configured `specsRoot` when the plan is valid.
 - Generated folders contain `SPEC.md`, `acceptance-checklist.md`, `metadata.json`, and `implementation-report.md` with correct IDs, names, and dependencies.
 - Existing spec folders are not overwritten without confirmation; collisions are reported in the completion view.
+- The running view streams Codex stdout/stderr; errors are shown in the done view along with recent logs.
 - Returning from the completion view lands on home (or Run if the “jump to Run” action was chosen).
 
 ## Implementation Notes

@@ -17,6 +17,7 @@ const (
 	StatusInProgress SpecStatus = "in-progress"
 	StatusDone       SpecStatus = "done"
 	StatusBlocked    SpecStatus = "blocked"
+	StatusFailed     SpecStatus = "failed"
 )
 
 // SpecMetadata represents the metadata.json schema for a spec folder.

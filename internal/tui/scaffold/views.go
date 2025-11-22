@@ -23,13 +23,18 @@ func introView() string {
 		"This flow will create specs/ with prompt templates, settings, the runner script,",
 		"and a sample spec so you can start executing specs immediately.",
 		"",
-		"Press Enter to get started or Esc to cancel.",
+		"Press Enter to get started, Esc to go back/quit, q to quit.",
 	}
 	return strings.Join(lines, "\n")
 }
 
 func modeView(modes []config.Mode, index int) string {
-	lines := []string{titleStyle.Render("Select workflow mode"), ""}
+	lines := []string{
+		titleStyle.Render("Select workflow mode"),
+		"",
+		"Strict runs acceptance commands sequentially; Parallel may fan out where safe.",
+		"",
+	}
 	for i, mode := range modes {
 		text := string(mode)
 		label := fmt.Sprintf("  %s", text)
@@ -38,7 +43,7 @@ func modeView(modes []config.Mode, index int) string {
 		}
 		lines = append(lines, label)
 	}
-	lines = append(lines, "", "Use ↑/↓ or tab to move, Enter to confirm.")
+	lines = append(lines, "", "Use ↑/↓ or tab to move, Enter to confirm, Esc to go back, q to quit.")
 	return strings.Join(lines, "\n")
 }
 
@@ -51,27 +56,20 @@ func commandsView(existing []string, input string) string {
 			lines = append(lines, fmt.Sprintf("- %s", cmd))
 		}
 	}
-	lines = append(lines, "", inputLabel.Render("Enter command (blank + Enter to continue, ctrl+w to remove last):"), input)
+	lines = append(lines, "", inputLabel.Render("Enter command (blank + Enter to continue, ctrl+w to remove last; Esc back, q quit):"), input)
 	return strings.Join(lines, "\n")
 }
 
-func optionsView(specsInput string, focus int, makeGraph bool, errMsg string) string {
-	checkbox := "[ ]"
-	if makeGraph {
-		checkbox = "[x]"
-	}
-	rootLabel := "Specs root"
-	graphLabel := "Generate sample dependency graph"
+func optionsView(specsInput string, focus int, errMsg string) string {
+	rootLabel := "Specs root (editable)"
 	if focus == 0 {
-		rootLabel = selectedStyle.Render(rootLabel)
-	} else {
-		graphLabel = selectedStyle.Render(graphLabel)
+		rootLabel = selectedStyle.Render(rootLabel + " — type to edit, Enter to continue")
 	}
-	lines := []string{titleStyle.Render("Optional settings"), "", fmt.Sprintf("%s:", rootLabel), specsInput, "", fmt.Sprintf("%s %s", checkbox, graphLabel)}
+	lines := []string{titleStyle.Render("Optional settings"), "", fmt.Sprintf("%s:", rootLabel), specsInput}
 	if errMsg != "" {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(errMsg))
 	}
-	lines = append(lines, "", "Use tab to switch fields, space to toggle, Enter to continue.")
+	lines = append(lines, "", "Use Enter to continue, Esc back, q quit.")
 	return strings.Join(lines, "\n")
 }
 
@@ -87,17 +85,12 @@ func confirmView(answers innerscaffold.Answers) string {
 			lines = append(lines, fmt.Sprintf("- %s", cmd))
 		}
 	}
-	if answers.GenerateSampleGraph {
-		lines = append(lines, "Sample dependency graph: yes")
-	} else {
-		lines = append(lines, "Sample dependency graph: no")
-	}
-	lines = append(lines, "", "Press Enter to scaffold or Esc to cancel.")
+	lines = append(lines, "", "Press Enter to scaffold, Esc to go back, q to quit.")
 	return strings.Join(lines, "\n")
 }
 
 func runningView(spin string) string {
-	return fmt.Sprintf("%s Creating workspace...", spin)
+	return fmt.Sprintf("%s Creating workspace... (Esc/q to cancel)", spin)
 }
 
 func completeView(result *innerscaffold.Result, err error) string {
@@ -125,6 +118,6 @@ func completeView(result *innerscaffold.Result, err error) string {
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, "Press Enter to exit.")
+	lines = append(lines, "Press Enter to exit, q to quit.")
 	return strings.Join(lines, "\n")
 }

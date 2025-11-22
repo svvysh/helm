@@ -2,7 +2,7 @@
 
 ## Summary
 
-Build the Go-based runner that performs the worker → verifier loop for a single spec directory. The runner will be invoked from the Run pane of the TUI (spec-04). A thin headless flag on `helm run` may reuse the same code, but the default `helm run` behavior is to open the TUI.
+Build the Go-based runner that performs the worker → verifier loop for a single spec directory. The runner will be invoked from the Run pane of the TUI (spec-04) and replaces the old Node script; no JavaScript runner is scaffolded.
 
 ## Goals
 
