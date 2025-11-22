@@ -134,7 +134,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.vp.Height = max(8, v.Height-8)
 		return m, nil
 	case tea.KeyMsg:
+		if v.Type == tea.KeyCtrlC {
+			if m.cancelSplit != nil {
+				m.cancelSplit()
+			}
+			m.canceled = true
+			return m, tea.Quit
+		}
 		if v.String() == "q" {
+			if m.phase == phaseRunning && m.cancelSplit != nil {
+				m.cancelSplit()
+			}
 			m.canceled = true
 			return m, tea.Quit
 		}
