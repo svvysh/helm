@@ -9,7 +9,6 @@
   ],
   "notes": "",
   "acceptanceCommands": [
-    "go test ./...",
-    "go vet ./..."
+    "make all"
   ]
 }

@@ -7,8 +7,7 @@
   ],
   "notes": "\n[2025-11-22T08:27:23.899Z] attempt 1 status=missing: remaining tasks: Align LoadSettings and SaveSettings paths so that customized SpecsRoot values round-trip; either always persist docs/specs/.cli-settings.json or make LoadSettings read from the user-configured specs root.\n[2025-11-22T08:33:06.062Z] attempt 2 status=ok: ok",
   "acceptanceCommands": [
-    "go test ./...",
-    "go vet ./..."
+    "make all"
   ],
   "lastRun": "2025-11-22T08:33:06.062Z"
 }

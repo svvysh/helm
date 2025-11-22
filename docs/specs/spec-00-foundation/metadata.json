@@ -5,8 +5,7 @@
   "dependsOn": [],
   "notes": "\n[2025-11-22T08:11:35.275Z] attempt 1 status=ok: ok",
   "acceptanceCommands": [
-    "go test ./...",
-    "go vet ./..."
+    "make all"
   ],
   "lastRun": "2025-11-22T08:11:35.275Z"
 }
