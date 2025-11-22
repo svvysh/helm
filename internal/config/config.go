@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -12,6 +13,17 @@ const (
 	settingsFileName = ".cli-settings.json"
 	defaultSpecsRoot = "docs/specs"
 )
+
+// DefaultSpecsRoot returns the canonical specs root path used when no override is provided.
+func DefaultSpecsRoot() string {
+	return defaultSpecsRoot
+}
+
+// ResolveSpecsRoot returns the absolute path to the specs root relative to root when the
+// provided specsRoot is relative. Absolute specsRoot values are returned untouched.
+func ResolveSpecsRoot(root, specsRoot string) string {
+	return resolveSpecsRoot(root, specsRoot)
+}
 
 // Mode describes how acceptance commands should be evaluated.
 type Mode string
@@ -35,14 +47,17 @@ type Settings struct {
 
 // LoadSettings reads CLI settings from docs/specs/.cli-settings.json.
 func LoadSettings(root string) (*Settings, error) {
-	path := settingsFilePath(root)
-	data, err := os.ReadFile(path)
+	path, err := locateSettingsFile(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := defaultSettings()
 			return &defaults, nil
 		}
+		return nil, err
+	}
 
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return nil, fmt.Errorf("read settings %s: %w", path, err)
 	}
 
@@ -62,7 +77,7 @@ func SaveSettings(root string, settings *Settings) error {
 	}
 
 	applyDefaults(settings)
-	path := settingsFilePath(root)
+	path := settingsFilePath(root, settings.SpecsRoot)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("ensure settings dir %s: %w", filepath.Dir(path), err)
 	}
@@ -78,11 +93,53 @@ func SaveSettings(root string, settings *Settings) error {
 	return nil
 }
 
-func settingsFilePath(root string) string {
+func settingsFilePath(root, specsRoot string) string {
+	return filepath.Join(resolveSpecsRoot(root, specsRoot), settingsFileName)
+}
+
+func resolveSpecsRoot(root, specsRoot string) string {
+	if specsRoot == "" {
+		specsRoot = defaultSpecsRoot
+	}
+	if filepath.IsAbs(specsRoot) {
+		return specsRoot
+	}
 	if root == "" {
 		root = "."
 	}
-	return filepath.Join(root, defaultSpecsRoot, settingsFileName)
+	return filepath.Join(root, specsRoot)
+}
+
+func locateSettingsFile(root string) (string, error) {
+	defaultPath := settingsFilePath(root, defaultSpecsRoot)
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath, nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("stat settings %s: %w", defaultPath, err)
+	}
+
+	stopErr := errors.New("stop settings walk")
+	var found string
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if d.Name() == settingsFileName {
+			found = path
+			return stopErr
+		}
+		return nil
+	})
+	if walkErr != nil && !errors.Is(walkErr, stopErr) {
+		return "", fmt.Errorf("locate settings: %w", walkErr)
+	}
+	if found == "" {
+		return "", os.ErrNotExist
+	}
+	return found, nil
 }
 
 func defaultSettings() Settings {

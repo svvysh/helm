@@ -1,14 +1,15 @@
 {
   "id": "spec-02-scaffold-command",
   "name": "scaffold command and initial specs layout",
-  "status": "todo",
+  "status": "done",
   "dependsOn": [
     "spec-00-foundation",
     "spec-01-config-metadata"
   ],
-  "notes": "",
+  "notes": "\n[2025-11-22T08:48:34.315Z] attempt 1 status=missing: remaining tasks: Run make all and document that it passes per spec-02-scaffold-command acceptance checklist.\n[2025-11-22T09:14:56.649Z] attempt 2 status=ok: ok",
   "acceptanceCommands": [
     "go test ./...",
     "go vet ./..."
-  ]
+  ],
+  "lastRun": "2025-11-22T09:14:56.649Z"
 }

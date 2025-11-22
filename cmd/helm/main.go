@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/polarzero/helm/internal/config"
+	scaffoldtui "github.com/polarzero/helm/internal/tui/scaffold"
 )
 
 func main() {
@@ -30,6 +32,9 @@ func newRootCmd() *cobra.Command {
 	}
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		if isScaffoldCommand(cmd) {
+			return nil
+		}
 		settings, err := config.LoadSettings(".")
 		if err != nil {
 			return fmt.Errorf("load settings: %w", err)
@@ -63,7 +68,24 @@ func newScaffoldCmd() *cobra.Command {
 		Use:   "scaffold",
 		Short: "Scaffold assets for a new spec",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "scaffold not implemented yet")
+			settings, err := config.LoadSettings(".")
+			if err != nil {
+				return fmt.Errorf("load settings: %w", err)
+			}
+			result, err := scaffoldtui.Run(scaffoldtui.Options{
+				Root:     ".",
+				Defaults: settings,
+			})
+			if err != nil {
+				if errors.Is(err, scaffoldtui.ErrCanceled) {
+					fmt.Fprintln(cmd.OutOrStdout(), "Scaffold canceled.")
+					return nil
+				}
+				return err
+			}
+			if result != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "Workspace ready at %s\n", result.SpecsRoot)
+			}
 			return nil
 		},
 	}
@@ -102,12 +124,11 @@ func newStatusCmd() *cobra.Command {
 	}
 }
 
-func settingsFromContext(ctx context.Context) *config.Settings {
-	if ctx == nil {
-		return nil
+func isScaffoldCommand(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() == "scaffold" {
+			return true
+		}
 	}
-	if val, ok := ctx.Value(settingsContextKey).(*config.Settings); ok {
-		return val
-	}
-	return nil
+	return false
 }

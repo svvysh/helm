@@ -22,6 +22,8 @@ The workflow is:
 
 Although the TUI is not yet implemented, this directory already contains the specs and templates that will be used to build it.
 
+**Testing convention:** when writing automated tests or dry-running scaffold/runner flows, point `SpecsRoot` to a temp directory (e.g., `t.TempDir()/specs-test`) so the checked-in `docs/specs/` tree stays untouched.
+
 ## Folder layout
 
 - `implement.prompt-template.md` — worker prompt template (strict mode).
