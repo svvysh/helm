@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/polarzero/helm/internal/config"
 )
 
 func main() {
@@ -13,12 +17,35 @@ func main() {
 	}
 }
 
+type contextKey string
+
+const settingsContextKey contextKey = "settings"
+
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "helm",
 		Short:        "Cross-project spec runner",
 		Long:         "Helm orchestrates cross-project specs via a cohesive CLI interface.",
 		SilenceUsage: true,
+	}
+
+	cmd.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		settings, err := config.LoadSettings(".")
+		if err != nil {
+			return fmt.Errorf("load settings: %w", err)
+		}
+
+		specsRoot := filepath.Join(".", settings.SpecsRoot)
+		if _, err := os.Stat(specsRoot); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("specs root %s does not exist; initialize docs/specs before running Helm", specsRoot)
+			}
+			return fmt.Errorf("stat specs root: %w", err)
+		}
+
+		ctx := context.WithValue(cmd.Context(), settingsContextKey, settings)
+		cmd.SetContext(ctx)
+		return nil
 	}
 
 	cmd.AddCommand(
@@ -73,4 +100,14 @@ func newStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func settingsFromContext(ctx context.Context) *config.Settings {
+	if ctx == nil {
+		return nil
+	}
+	if val, ok := ctx.Value(settingsContextKey).(*config.Settings); ok {
+		return val
+	}
+	return nil
 }
