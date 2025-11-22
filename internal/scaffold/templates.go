@@ -289,6 +289,7 @@ func exampleImplementationReport() string {
 	return strings.Join(lines, "\n")
 }
 
+//nolint:unused // kept to illustrate dependency graph seeds in scaffold docs.
 func sampleDependencyGraph() string {
 	graph := map[string]any{
 		"specs": []map[string]any{
@@ -308,6 +309,7 @@ func sampleDependencyGraph() string {
 	return string(data)
 }
 
+//nolint:unused // retained for documentation until the JS runner template returns.
 func implementRunnerScript() string {
 	lines := []string{
 		"#!/usr/bin/env node",

@@ -177,6 +177,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+//nolint:unused // reserved for future cancel key helpers when panes share navigation.
 func keyCancel(msg tea.KeyMsg) bool {
 	switch msg.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
@@ -368,7 +369,7 @@ func (m *model) answers() innerscaffold.Answers {
 	return innerscaffold.Answers{
 		Mode:               mode,
 		AcceptanceCommands: trimmed,
-		SpecsRoot:         strings.TrimSpace(m.specsRoot.Value()),
+		SpecsRoot:          strings.TrimSpace(m.specsRoot.Value()),
 	}
 }
 

@@ -8,23 +8,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
-	"github.com/polarzero/helm/internal/metadata"
 	"github.com/polarzero/helm/internal/specs"
-)
-
-var (
-	titleStyle    = lipgloss.NewStyle().Bold(true)
-	hintStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
-	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
-	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	badgeBase     = lipgloss.NewStyle().Bold(true).Padding(0, 1)
-	badgeTodo     = badgeBase.Foreground(lipgloss.Color("229")).Background(lipgloss.Color("94"))
-	badgeProgress = badgeBase.Foreground(lipgloss.Color("16")).Background(lipgloss.Color("148"))
-	badgeDone     = badgeBase.Foreground(lipgloss.Color("16")).Background(lipgloss.Color("120"))
-	badgeBlocked  = badgeBase.Foreground(lipgloss.Color("231")).Background(lipgloss.Color("124"))
-	badgeFailed   = badgeBase.Foreground(lipgloss.Color("231")).Background(lipgloss.Color("196"))
+	"github.com/polarzero/helm/internal/tui/theme"
 )
 
 type specItem struct {
@@ -101,48 +87,15 @@ func renderSpecItem(folder *specs.SpecFolder, selected bool) string {
 	if folder == nil || folder.Metadata == nil {
 		return ""
 	}
-	badgeText, badgeStyle := statusBadge(folder)
+	badgeText, badgeStyle, _ := theme.StatusBadge(folder.Metadata, len(folder.UnmetDeps) > 0)
 	header := fmt.Sprintf("%s %s — %s", badgeStyle.Render(badgeText), folder.Metadata.ID, folder.Metadata.Name)
 	if selected {
-		header = selectedStyle.Render(header)
+		header = theme.SelectedStyle.Render(header)
 	}
 	dep := dependencySummary(folder)
 	last := lastRunSummary(folder)
-	lines := []string{header, hintStyle.Render(dep), hintStyle.Render(last)}
+	lines := []string{header, theme.HintStyle.Render(dep), theme.HintStyle.Render(last)}
 	return strings.Join(lines, "\n")
-}
-
-func statusBadge(folder *specs.SpecFolder) (string, lipgloss.Style) {
-	if folder == nil || folder.Metadata == nil {
-		return "TODO", badgeTodo
-	}
-	status := folder.Metadata.Status
-	switch status {
-	case metadata.StatusDone:
-		return "DONE", badgeDone
-	case metadata.StatusInProgress:
-		if len(folder.UnmetDeps) > 0 {
-			return "BLOCKED", badgeBlocked
-		}
-		return "IN PROGRESS", badgeProgress
-	case metadata.StatusBlocked:
-		return "BLOCKED", badgeBlocked
-	case metadata.StatusFailed:
-		return "FAILED", badgeFailed
-	case metadata.StatusTodo:
-		if len(folder.UnmetDeps) > 0 {
-			return "BLOCKED", badgeBlocked
-		}
-		return "TODO", badgeTodo
-	default:
-		if len(folder.UnmetDeps) > 0 {
-			return "BLOCKED", badgeBlocked
-		}
-		if folder.CanRun {
-			return "TODO", badgeTodo
-		}
-		return "TODO", badgeTodo
-	}
 }
 
 func dependencySummary(folder *specs.SpecFolder) string {
@@ -178,7 +131,7 @@ func (m *model) listView() string {
 	if m.filterRunnable {
 		filterLabel = "Runnable only"
 	}
-	b.WriteString(hintStyle.Render(fmt.Sprintf("[↑/↓] move  [enter] run  [f] filter: %s  [q] quit", filterLabel)))
+	b.WriteString(theme.HintStyle.Render(fmt.Sprintf("[↑/↓] move  [enter] run  [f] filter: %s  [q] quit", filterLabel)))
 	if m.confirmUnmet {
 		deps := "none"
 		if item := m.currentItem(); item != nil {
@@ -187,7 +140,7 @@ func (m *model) listView() string {
 			}
 		}
 		b.WriteString("\n\n")
-		b.WriteString(warningStyle.Render(fmt.Sprintf("This spec has unmet dependencies: %s. Run anyway? [y/N]", deps)))
+		b.WriteString(theme.WarningStyle.Render(fmt.Sprintf("This spec has unmet dependencies: %s. Run anyway? [y/N]", deps)))
 	}
 	return b.String()
 }
@@ -197,19 +150,19 @@ func (m *model) runningView() string {
 		return "Starting run..."
 	}
 	spec := m.running.spec.Metadata
-	title := titleStyle.Render(fmt.Sprintf("Running %s — %s", spec.ID, spec.Name))
+	title := theme.TitleStyle.Render(fmt.Sprintf("Running %s — %s", spec.ID, spec.Name))
 	attemptLine := "Waiting for attempts to start"
 	if m.running.attempt > 0 && m.running.totalAttempts > 0 {
 		attemptLine = fmt.Sprintf("Attempt %d of %d", m.running.attempt, m.running.totalAttempts)
 	}
 	lines := []string{
 		title,
-		hintStyle.Render(attemptLine + "  •  Press q to stop, PgUp/PgDn to scroll"),
+		theme.HintStyle.Render(attemptLine + "  •  Press q to stop, PgUp/PgDn to scroll"),
 		"",
 		m.viewport.View(),
 	}
 	if m.confirmKill {
-		lines = append(lines, "", warningStyle.Render("Stop this run and terminate implement-spec? [y/N]"))
+		lines = append(lines, "", theme.WarningStyle.Render("Stop this run and terminate implement-spec? [y/N]"))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -218,10 +171,10 @@ func (m *model) resultView() string {
 	if m.result == nil {
 		return "Run complete"
 	}
-	title := titleStyle.Render(fmt.Sprintf("Run result — %s", m.result.specID))
+	title := theme.TitleStyle.Render(fmt.Sprintf("Run result — %s", m.result.specID))
 	lines := []string{title}
 	if m.result.err != nil {
-		lines = append(lines, warningStyle.Render(fmt.Sprintf("Error: %v", m.result.err)))
+		lines = append(lines, theme.WarningStyle.Render(fmt.Sprintf("Error: %v", m.result.err)))
 	} else {
 		statusLabel := strings.ToUpper(string(m.result.status))
 		if statusLabel == "" {
@@ -229,9 +182,9 @@ func (m *model) resultView() string {
 		}
 		lines = append(lines, fmt.Sprintf("Spec status: %s", statusLabel))
 		if m.result.exitErr != nil {
-			lines = append(lines, warningStyle.Render(fmt.Sprintf("implement-spec exited with code %d: %v", m.result.exitCode, m.result.exitErr)))
+			lines = append(lines, theme.WarningStyle.Render(fmt.Sprintf("implement-spec exited with code %d: %v", m.result.exitCode, m.result.exitErr)))
 		} else {
-			lines = append(lines, hintStyle.Render("implement-spec exited successfully."))
+			lines = append(lines, theme.HintStyle.Render("implement-spec exited successfully."))
 		}
 	}
 	if len(m.result.remaining) > 0 {
@@ -240,6 +193,6 @@ func (m *model) resultView() string {
 			lines = append(lines, fmt.Sprintf("- %s", task))
 		}
 	}
-	lines = append(lines, "", hintStyle.Render("Press enter/r to return to list, q to quit."), "", m.viewport.View())
+	lines = append(lines, "", theme.HintStyle.Render("Press enter/r to return to list, q to quit."), "", m.viewport.View())
 	return strings.Join(lines, "\n")
 }

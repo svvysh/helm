@@ -18,6 +18,7 @@ import (
 	scaffoldtui "github.com/polarzero/helm/internal/tui/scaffold"
 	settingsui "github.com/polarzero/helm/internal/tui/settings"
 	specsplittui "github.com/polarzero/helm/internal/tui/specsplit"
+	statusui "github.com/polarzero/helm/internal/tui/status"
 )
 
 func main() {
@@ -126,35 +127,42 @@ func newRootCmd() *cobra.Command {
 		specsRoot := config.ResolveSpecsRoot(root, rc.SpecsRoot)
 		acceptance := resolveAcceptance(specsRoot, settings)
 
-		result, err := home.Run(home.Options{
-			Root:               root,
-			SpecsRoot:          specsRoot,
-			Settings:           settings,
-			AcceptanceCommands: acceptance,
-		})
-		if err != nil {
-			if errors.Is(err, home.ErrCanceled) {
+		for {
+			result, err := home.Run(home.Options{
+				Root:               root,
+				SpecsRoot:          specsRoot,
+				Settings:           settings,
+				AcceptanceCommands: acceptance,
+			})
+			if err != nil {
+				if errors.Is(err, home.ErrCanceled) {
+					return nil
+				}
+				return err
+			}
+
+			switch result.Selection {
+			case home.SelectRun:
+				if err := runtui.Run(runtui.Options{
+					Root:      root,
+					SpecsRoot: specsRoot,
+					Settings:  settings,
+				}); err != nil {
+					return err
+				}
+			case home.SelectBreakdown:
+				if err := runSpecSplit(cmd, settings, specsRoot, "", ""); err != nil {
+					return err
+				}
+			case home.SelectStatus:
+				if err := statusui.Run(statusui.Options{SpecsRoot: specsRoot}); err != nil {
+					return err
+				}
+			case home.SelectQuit:
+				return nil
+			default:
 				return nil
 			}
-			return err
-		}
-
-		switch result.Selection {
-		case home.SelectRun:
-			return runtui.Run(runtui.Options{
-				Root:      root,
-				SpecsRoot: specsRoot,
-				Settings:  settings,
-			})
-		case home.SelectBreakdown:
-			return runSpecSplit(cmd, settings, specsRoot, "", "")
-		case home.SelectStatus:
-			fmt.Fprintln(cmd.OutOrStdout(), "Status view is not yet implemented.")
-			return nil
-		case home.SelectQuit:
-			return nil
-		default:
-			return nil
 		}
 	}
 
@@ -266,8 +274,16 @@ func newStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show the status of specs (direct flow)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "status view not implemented yet; use `helm` to open the TUI once available")
-			return nil
+			settings, err := settingsFromContext(cmd.Context())
+			if err != nil {
+				return err
+			}
+			root, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("determine working directory: %w", err)
+			}
+			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
+			return statusui.Run(statusui.Options{SpecsRoot: specsRoot})
 		},
 	}
 }
