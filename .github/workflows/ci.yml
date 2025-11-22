@@ -22,14 +22,22 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Build
-        run: go build -o bin/helm ./cmd/helm
+      - name: Format check
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          go install golang.org/x/tools/cmd/goimports@latest
+          gofumpt -w .
+          goimports -w .
+          git diff --exit-code
 
       - name: Vet
         run: go vet ./...
 
       - name: Test
         run: go test ./...
+
+      - name: Build
+        run: go build -o bin/helm ./cmd/helm
 
       - name: Build cross-platform artifacts (main only)
         if: github.ref == 'refs/heads/main'

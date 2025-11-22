@@ -31,6 +31,14 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Format
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          go install golang.org/x/tools/cmd/goimports@latest
+          gofumpt -w .
+          goimports -w .
+          git diff --exit-code
+
       - name: Vet
         run: go vet ./...
 

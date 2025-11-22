@@ -3,10 +3,14 @@ BIN ?= bin/$(APP)
 CMD ?= run
 ARGS ?=
 RELEASE_PLATFORMS ?= darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
+GO_BIN := $(shell go env GOBIN)
+ifeq ($(GO_BIN),)
+GO_BIN := $(shell go env GOPATH)/bin
+endif
 
-.PHONY: run build deps test vet tidy all release clean
+.PHONY: run build deps test vet tidy fmt fmt-tools all release clean
 
-all: deps tidy vet test build
+all: deps tidy fmt vet test build
 
 run:
 	go run ./cmd/$(APP) $(CMD) $(ARGS)
@@ -25,6 +29,15 @@ vet:
 
 tidy:
 	go mod tidy
+
+fmt: fmt-tools
+	$(GO_BIN)/gofumpt -w .
+	$(GO_BIN)/goimports -w .
+
+fmt-tools:
+	@mkdir -p "$(GO_BIN)"
+	@command -v "$(GO_BIN)/gofumpt" >/dev/null 2>&1 || GOBIN="$(GO_BIN)" go install mvdan.cc/gofumpt@latest
+	@command -v "$(GO_BIN)/goimports" >/dev/null 2>&1 || GOBIN="$(GO_BIN)" go install golang.org/x/tools/cmd/goimports@latest
 
 clean:
 	rm -rf dist bin
