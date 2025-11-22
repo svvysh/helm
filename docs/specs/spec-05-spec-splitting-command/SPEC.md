@@ -102,6 +102,7 @@ Implement the `helm spec` command and TUI flow that accepts a large, pasted prod
 
 - Codex calls for splitting should use a read-only sandbox (`--sandbox read-only`).
 - For testing without real Codex access, consider a dev flag to read a split plan from a local JSON file.
+- Testing convention: generate split output in a temp specs root (e.g., `t.TempDir()/specs-test`) rather than `docs/specs/` so automated runs don’t alter the tracked spec tree.
 
 ## Depends on
 

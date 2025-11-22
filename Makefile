@@ -8,9 +8,9 @@ ifeq ($(GO_BIN),)
 GO_BIN := $(shell go env GOPATH)/bin
 endif
 
-.PHONY: run build deps test vet tidy fmt fmt-tools all release clean
+.PHONY: run build deps test vet tidy fmt fmt-tools lint lint-tools all release clean
 
-all: deps tidy fmt vet test build
+all: deps tidy fmt vet lint test build release
 
 run:
 	go run ./cmd/$(APP) $(CMD) $(ARGS)
@@ -38,6 +38,13 @@ fmt-tools:
 	@mkdir -p "$(GO_BIN)"
 	@command -v "$(GO_BIN)/gofumpt" >/dev/null 2>&1 || GOBIN="$(GO_BIN)" go install mvdan.cc/gofumpt@latest
 	@command -v "$(GO_BIN)/goimports" >/dev/null 2>&1 || GOBIN="$(GO_BIN)" go install golang.org/x/tools/cmd/goimports@latest
+
+lint: lint-tools
+	$(GO_BIN)/golangci-lint run ./...
+
+lint-tools:
+	@mkdir -p "$(GO_BIN)"
+	@command -v "$(GO_BIN)/golangci-lint" >/dev/null 2>&1 || GOBIN="$(GO_BIN)" go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 clean:
 	rm -rf dist bin

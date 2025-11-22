@@ -144,6 +144,7 @@ Complete the implementation of `implement-spec.mjs`, the Node-based runner that 
 - Prefer async/await with `fs/promises` for filesystem IO.
 - Keep the script self-contained; avoid external dependencies beyond Node and the Codex CLI.
 - You may add a `--dry-run` flag for development/testing if helpful, but it is not required by this spec.
+- Testing convention: point runner invocations in tests at a temp specs root (e.g., `t.TempDir()/specs-test`) with its own `.cli-settings.json` so the checked-in `docs/specs/` tree remains untouched.
 
 ## Depends on
 

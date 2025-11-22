@@ -82,6 +82,7 @@ Implement the `helm status` command as a Bubble Tea TUI that summarizes the read
 
 - Reuse styling components (status badges, headings) from the `run` TUI where possible.
 - Keep rendering efficient enough to handle dozens of specs without flicker.
+- Testing convention: populate status data from a temp specs root (e.g., `t.TempDir()/specs-test`) so test runs don’t mutate the real `docs/specs/` directory.
 
 ## Depends on
 

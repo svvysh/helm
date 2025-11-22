@@ -136,6 +136,7 @@ Introduce the core domain types and filesystem conventions for the spec runner. 
 - Keep the `internal` packages self-contained and free of CLI-specific concerns.
 - Favor small helper functions that will be easy to unit test.
 - Avoid embedding any TUI-specific logic here; that will come in later specs.
+- Testing convention: when exercising settings/spec discovery in tests, point `SpecsRoot` at a temp path (e.g., `t.TempDir()/specs-test`) to avoid mutating the tracked `docs/specs/` workspace.
 
 ## Depends on
 

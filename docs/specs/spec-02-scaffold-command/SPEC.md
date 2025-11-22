@@ -133,6 +133,7 @@ In this repository, it should be capable of recreating a structure similar to th
 - Keep the `scaffold` TUI as a separate Bubble Tea model in `internal/tui/scaffold`.
 - The Cobra `scaffold` command should just instantiate the model and run it.
 - For now, you can keep the runner script simple; later specs may refine its behavior and error handling.
+- Testing convention: run scaffold in tests against a temp specs root (e.g., `t.TempDir()/specs-test`) and assert outputs there so we never write into the repository’s `docs/specs/` directory.
 
 ## Depends on
 

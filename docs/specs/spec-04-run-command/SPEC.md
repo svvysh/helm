@@ -101,6 +101,7 @@ Implement the `helm run` command as a Bubble Tea TUI that discovers specs, displ
 - Keep the TUI responsive: stream logs incrementally rather than waiting for the process to finish.
 - Consider limiting the number of log lines kept in memory (e.g., keep the last N lines).
 - Use consistent styling (Lipgloss) for status badges and headings.
+- Testing convention: exercise the run command against specs rooted in a temp directory (e.g., `t.TempDir()/specs-test`) and ensure settings/spec paths point there so repo-tracked `docs/specs/` files are not mutated.
 
 ## Depends on
 
