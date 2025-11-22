@@ -11,6 +11,7 @@ import (
 
 func TestRunCreatesWorkspace(t *testing.T) {
 	root := t.TempDir()
+	os.Setenv("HELM_CONFIG_DIR", filepath.Join(root, ".config"))
 	answers := Answers{
 		Mode:                config.ModeStrict,
 		AcceptanceCommands:  []string{"go test ./..."},
@@ -24,7 +25,7 @@ func TestRunCreatesWorkspace(t *testing.T) {
 	if result == nil {
 		t.Fatalf("expected result")
 	}
-	settingsPath := filepath.Join(root, "tmp", "test-specs", ".cli-settings.json")
+	settingsPath := filepath.Join(root, ".config", "settings.json")
 	if _, err := os.Stat(settingsPath); err != nil {
 		t.Fatalf("missing settings file: %v", err)
 	}

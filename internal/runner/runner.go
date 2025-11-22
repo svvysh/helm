@@ -23,8 +23,8 @@ type Runner struct {
 	SpecsRoot                 string
 	Mode                      config.Mode
 	MaxAttempts               int
-	WorkerModel               string
-	VerifierModel             string
+	WorkerChoice              config.CodexChoice
+	VerifierChoice            config.CodexChoice
 	DefaultAcceptanceCommands []string
 	Stdout                    io.Writer
 	Stderr                    io.Writer
@@ -104,6 +104,16 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 		mode = config.ModeStrict
 	}
 
+	workerChoice := r.WorkerChoice
+	if workerChoice.Model == "" {
+		workerChoice = config.CodexChoice{Model: "gpt-5.1-codex", Reasoning: "medium"}
+	}
+
+	verifierChoice := r.VerifierChoice
+	if verifierChoice.Model == "" {
+		verifierChoice = config.CodexChoice{Model: "gpt-5.1-codex", Reasoning: "medium"}
+	}
+
 	maxAttempts := r.MaxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = 2
@@ -153,7 +163,7 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 			"{{MODE}}":                     string(mode),
 		})
 
-		workerOutput, err := codex.Exec(ctx, workerArgs(r.WorkerModel), workerPrompt, stdout, stderr)
+		workerOutput, err := codex.Exec(ctx, workerArgs(workerChoice), workerPrompt, stdout, stderr)
 		if err != nil {
 			return fmt.Errorf("worker execution failed: %w", err)
 		}
@@ -168,7 +178,7 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 			"{{MODE}}":                  string(mode),
 		})
 
-		verifierOutput, err := codex.Exec(ctx, verifierArgs(r.VerifierModel), reviewPrompt, stdout, stderr)
+		verifierOutput, err := codex.Exec(ctx, verifierArgs(verifierChoice), reviewPrompt, stdout, stderr)
 		if err != nil {
 			return fmt.Errorf("verifier execution failed: %w", err)
 		}
@@ -197,18 +207,22 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 	return fmt.Errorf("exhausted %d attempts without STATUS: ok", maxAttempts)
 }
 
-func workerArgs(model string) []string {
-	if model == "" {
-		model = "gpt-5.1-codex"
+func workerArgs(choice config.CodexChoice) []string {
+	args := []string{"exec", "--dangerously-bypass-approvals-and-sandbox", "--model", choice.Model}
+	if choice.Reasoning != "" {
+		args = append(args, "--reasoning", choice.Reasoning)
 	}
-	return []string{"exec", "--dangerously-bypass-approvals-and-sandbox", "--model", model, "--stdin"}
+	args = append(args, "--stdin")
+	return args
 }
 
-func verifierArgs(model string) []string {
-	if model == "" {
-		model = "gpt-5.1-codex"
+func verifierArgs(choice config.CodexChoice) []string {
+	args := []string{"exec", "--sandbox", "read-only", "--model", choice.Model}
+	if choice.Reasoning != "" {
+		args = append(args, "--reasoning", choice.Reasoning)
 	}
-	return []string{"exec", "--sandbox", "read-only", "--model", model, "--stdin"}
+	args = append(args, "--stdin")
+	return args
 }
 
 func fillTemplate(tpl string, replacements map[string]string) string {

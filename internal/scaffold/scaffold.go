@@ -102,26 +102,18 @@ func Run(root string, answers Answers) (*Result, error) {
 		record(scriptPath, created)
 	}
 
-	settingsPath := filepath.Join(specsRootAbs, ".cli-settings.json")
-	if _, err := os.Stat(settingsPath); err == nil {
-		record(settingsPath, false)
-	} else if errors.Is(err, os.ErrNotExist) {
-		settings := &config.Settings{
-			SpecsRoot:          answers.SpecsRoot,
-			Mode:               answers.Mode,
-			DefaultMaxAttempts: 2,
-			CodexModelScaffold: "gpt-5.1-codex",
-			CodexModelRunImpl:  "gpt-5.1-codex",
-			CodexModelRunVer:   "gpt-5.1-codex",
-			CodexModelSplit:    "gpt-5.1-codex",
-			AcceptanceCommands: answers.AcceptanceCommands,
-		}
-		if err := config.SaveSettings(root, settings); err != nil {
-			return nil, fmt.Errorf("save settings: %w", err)
-		}
-		record(settingsPath, true)
-	} else {
-		return nil, fmt.Errorf("stat settings %s: %w", settingsPath, err)
+	settings := &config.Settings{
+		SpecsRoot:          answers.SpecsRoot,
+		Mode:               answers.Mode,
+		DefaultMaxAttempts: 2,
+		CodexScaffold:      config.CodexChoice{Model: "gpt-5.1", Reasoning: "medium"},
+		CodexRunImpl:       config.CodexChoice{Model: "gpt-5.1-codex", Reasoning: "medium"},
+		CodexRunVer:        config.CodexChoice{Model: "gpt-5.1-codex", Reasoning: "medium"},
+		CodexSplit:         config.CodexChoice{Model: "gpt-5.1", Reasoning: "medium"},
+		AcceptanceCommands: answers.AcceptanceCommands,
+	}
+	if err := config.SaveSettings(settings); err != nil {
+		return nil, fmt.Errorf("save settings: %w", err)
 	}
 
 	specDir := filepath.Join(specsRootAbs, "spec-00-example")

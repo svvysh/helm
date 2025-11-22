@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -13,6 +12,7 @@ import (
 	"github.com/polarzero/helm/internal/config"
 	"github.com/polarzero/helm/internal/runner"
 	scaffoldtui "github.com/polarzero/helm/internal/tui/scaffold"
+	settingsui "github.com/polarzero/helm/internal/tui/settings"
 )
 
 func main() {
@@ -37,12 +37,12 @@ func newRootCmd() *cobra.Command {
 		if isScaffoldCommand(cmd) {
 			return nil
 		}
-		settings, err := config.LoadSettings(".")
+		settings, err := config.LoadSettings()
 		if err != nil {
 			return fmt.Errorf("load settings: %w", err)
 		}
 
-		specsRoot := filepath.Join(".", settings.SpecsRoot)
+		specsRoot := config.ResolveSpecsRoot(".", settings.SpecsRoot)
 		if _, err := os.Stat(specsRoot); err != nil {
 			if os.IsNotExist(err) {
 				return fmt.Errorf("specs root %s does not exist; initialize docs/specs before running Helm", specsRoot)
@@ -57,6 +57,7 @@ func newRootCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		newScaffoldCmd(),
+		newSettingsCmd(),
 		newRunCmd(),
 		newSpecCmd(),
 		newStatusCmd(),
@@ -70,7 +71,7 @@ func newScaffoldCmd() *cobra.Command {
 		Use:   "scaffold",
 		Short: "Scaffold assets for a new spec",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			settings, err := config.LoadSettings(".")
+			settings, err := config.LoadSettings()
 			if err != nil {
 				return fmt.Errorf("load settings: %w", err)
 			}
@@ -87,6 +88,29 @@ func newScaffoldCmd() *cobra.Command {
 			}
 			if result != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "Workspace ready at %s\n", result.SpecsRoot)
+			}
+			return nil
+		},
+	}
+}
+
+func newSettingsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "settings",
+		Short: "Edit global Helm settings",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			current, _ := config.LoadSettings()
+			updated, err := settingsui.Run(settingsui.Options{Initial: current})
+			if err != nil {
+				if errors.Is(err, settingsui.ErrCanceled) {
+					fmt.Fprintln(cmd.OutOrStdout(), "Settings unchanged.")
+					return nil
+				}
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Settings saved.")
+			if updated != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "Specs root: %s\n", updated.SpecsRoot)
 			}
 			return nil
 		},
@@ -130,13 +154,20 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			workerModel := os.Getenv("CODEX_MODEL_IMPL")
-			if workerModel == "" {
-				workerModel = settings.CodexModelRunImpl
+			workerChoice := settings.CodexRunImpl
+			if model := os.Getenv("CODEX_MODEL_IMPL"); model != "" {
+				workerChoice.Model = model
 			}
-			verifierModel := os.Getenv("CODEX_MODEL_VER")
-			if verifierModel == "" {
-				verifierModel = settings.CodexModelRunVer
+			if r := os.Getenv("CODEX_REASONING_IMPL"); r != "" {
+				workerChoice.Reasoning = r
+			}
+
+			verifierChoice := settings.CodexRunVer
+			if model := os.Getenv("CODEX_MODEL_VER"); model != "" {
+				verifierChoice.Model = model
+			}
+			if r := os.Getenv("CODEX_REASONING_VER"); r != "" {
+				verifierChoice.Reasoning = r
 			}
 
 			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
@@ -146,8 +177,8 @@ func newRunCmd() *cobra.Command {
 				SpecsRoot:                 specsRoot,
 				Mode:                      mode,
 				MaxAttempts:               maxAttempts,
-				WorkerModel:               workerModel,
-				VerifierModel:             verifierModel,
+				WorkerChoice:              workerChoice,
+				VerifierChoice:            verifierChoice,
 				DefaultAcceptanceCommands: settings.AcceptanceCommands,
 				Stdout:                    cmd.OutOrStdout(),
 				Stderr:                    cmd.ErrOrStderr(),
