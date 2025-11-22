@@ -75,6 +75,11 @@ Establish the foundational Go module and CLI entrypoint for the Cross-Project Sp
 - Prefer using `spf13/cobra` for the CLI.
 - Keep the subcommands minimal; later specs will replace the stub implementations with real behavior.
 - Make it easy for future specs to add flags and configuration to each subcommand.
+- Provide a tiny Makefile to streamline local use:
+  - `make run CMD=run` executes `go run ./cmd/helm run`.
+  - `make build` produces a `bin/helm` binary.
+  - `make deps`, `make test`, and `make vet` wrap the corresponding Go tooling.
+  - `make all` runs deps → tidy → vet → test → build for a quick local verification pass.
 
 ## Depends on
 
