@@ -6,13 +6,12 @@
 
 ## Manual checks
 
-- [ ] Theme is sourced from `catppuccin/lipgloss` (dark by default) with a light/fallback option; no hard-coded color literals remain in views.
-- [ ] Layout uses shared Page/Panel/Alert/KeyHints components (lipgloss-contrib) across Home, Run, Status, Scaffold, Spec Split, and Settings.
-- [ ] Home view shows uniform cards with icon/title/subtitle; focused card uses primary border; key bar present.
-- [ ] Run view uses two-column layout (status card + log viewport), Alert for unmet deps/kill confirm, progress/spinner themed; key bar present.
-- [ ] Status view shows legend, focus panel, graph/table panel with themed badges; graph/table share the same key bar styling; ASCII fallback looks acceptable.
-- [ ] Scaffold and Settings flows are implemented with `charmbracelet/huh` forms, including validation feedback and focused field styling.
-- [ ] Spec Split intro/help rendered via glamour markdown; text area and log viewport share panel styling; key bar present.
-- [ ] Key hint bar is visible and consistent in every pane.
-- [ ] At 80-column terminal width, layouts collapse to single-column without clipping key hints or badges.
-- [ ] Palette switch (dark/light) can be toggled via config/env and applies across all components without visual regressions.
+- [ ] `go run ./cmd/helm` opens the home menu wrapped in the new component shell (header + key help bar); quitting with `q` returns to the terminal without panic.
+- [ ] Home menu items reuse the shared `MenuList` component (same cursor, spacing, and typography as spec list rows) and the hint bar matches other panes.
+- [ ] Run pane list phase renders every spec row with the shared status badge + two-line meta layout; filter toggle/hint is shown via the common key-help bar; unmet-deps confirmation uses the standard modal component.
+- [ ] Run pane running/result phases use the shared log viewer (status bar + scrollable viewport), resume chip, and flash/confirmation components; copy-to-clipboard messaging is consistent with other panes.
+- [ ] Status pane uses the shared summary bar, table theme, graph viewport frame, and key-help bar; toggling views/focus does not change fonts/colors.
+- [ ] Breakdown (`helm spec`) intro/input/running/done views use the shared shell, textarea/input styling, spinner line, summary table, resume chip, and warning list components.
+- [ ] Scaffold wizard steps (intro, mode picker, commands, options, confirm, running, complete) all use the shared shell; inputs and spinners match the shared form and progress components.
+- [ ] Settings form rows use the shared form field component (focused indicator + aligned value text); saving/canceling behaves as before.
+- [ ] All reused components live under `internal/tui/components` (or theme) and each pane imports them instead of bespoke lipgloss/bubble styles.

@@ -1,114 +1,97 @@
-# spec-07-tui-ux-refresh — Glow-patterned Helm TUI revamp
+# spec-07-tui-ux-refresh — Unified TUI component system
 
 ## Summary
-Rebuild every Helm TUI screen to follow the exact layout, sizing, help, and rendering patterns used in Charmbracelet's Glow (submodule at `references/glow`, commit `ba37804fd57d82fdea1e2a4275884a76f27c1d8f`). The goal is to eliminate bespoke spacing/styling and reuse proven Bubble Tea conventions for background repainting, key help, pagination, and markdown/pager flows. The spec is prescriptive: use the cited Glow files as the canonical reference; deviations require justification in code review.
-
-## Canonical references (read before coding)
-- Program/bootstrap: `references/glow/ui/ui.go`
-- Layout + stash list (list+pager split, pagination, help): `references/glow/ui/stash.go`, `stashhelp.go`, `keys.go`
-- Pager (viewport, status bar, help toggle, high-perf rendering): `references/glow/ui/pager.go`
-- Styles + adaptive colors: `references/glow/ui/styles.go`, top-level `references/glow/style.go`
-- Markdown rendering: `references/glow/ui/markdown.go`, `references/glow/ui/pager.go` glamour usage
+Rebuild the Helm TUI visuals around a small, reusable Bubble Tea component kit (colors, layout, controls) cloned from `references/glow`. Every screen—home, Run, Status, Breakdown/spec split, Scaffold, and Settings—must render with the same primitives so no view has bespoke lipgloss styling. Logic, hotkeys, and data stay the same; only presentation and component reuse change.
 
 ## Goals
-- Replace Helm’s ad-hoc layout/string building with Glow-derived primitives: alt-screen program setup, list+pager split layouts, mini/full help bars, status messages, high-performance viewports, and pagination.
-- Keep our Catppuccin palette, but map it onto Glow’s structural styling (borders, padding, adaptive color fallback) so screens look cohesive and repaint correctly on resize.
-- Standardize key maps, help rendering, status/pill badges, and background fills across Home, Run, Status, Scaffold, Spec Split, Settings.
-- Remove guesswork: for each screen, specify which Glow pattern to copy and how to adapt it to Helm data.
+- Produce a complete inventory of everything we render across all Helm TUIs and map each element to a shared component.
+- Build a component kit under `internal/tui/components` (plus palette in `internal/tui/theme`) by cloning styles/behaviors from `references/glow`.
+- Re-skin every TUI view to use those components, preserving all existing behavior and shortcuts.
+- Ensure future screens can be assembled only from the shared components (no one-off lipgloss styles).
 
-## Non-goals
-- Changing business logic of run/status/scaffold/specsplit flows.
-- Adding mouse interactions beyond what Glow already wires (only if we opt-in via config; see UI bootstrap).
-- Replacing Bubble Tea stack.
+## Non-Goals
+- Adding new commands, flows, or data. No new panes or extra fields.
+- Changing keybindings, runner logic, spec discovery, or acceptance flows.
+- Introducing mouse support or animations beyond what Bubble Tea already provides.
 
-## Global design system (derive from Glow, re-skin with Catppuccin)
-1) **Program shell** (mirror `ui.NewProgram`):
-   - Start TUI with `tea.WithAltScreen()` and optional `tea.WithMouseCellMotion()` based on a Helm setting (`settings.TUI.EnableMouse`).
-   - Keep a `commonModel` equivalent holding width/height/settings for all sub-models.
+## Phase 1 — Inventory of current UI surfaces & required components
+Every renderable element must be covered by a shared component.
 
-2) **Theme/tokens** (keep Catppuccin, mirror Glow style structure):
-   - Colors: retain `theme.Colors` but add `AdaptiveColor` fallback semantics like `styles.go` (light/dark fields) for when 256-color fallback is active.
-   - Spacing: adopt Glow’s explicit padding constants for list/pager (e.g., `stashViewTopPadding=5`, `stashViewBottomPadding=3`, `stashViewHorizontalPadding=6`). Map them to our spacing scale (XS/SM/MD/LG/XL) and document the mapping.
-   - Typography: keep current Typography but add helpers matching Glow (muted, subtle, accent, pill). Provide a one-liner helper to render mono pills similar to Glow’s status bar messages.
-   - Borders: provide ASCII and rounded variants; default mirrors Glow (rounded for panels, thick for key/help bars).
+- **Home menu**: page title, vertical menu list (Run/Breakdown/Status/Quit), pointer/cursor indicator, bottom hint bar.
+- **Run pane — list phase**: spec list rows showing status badge, ID, name, unmet-deps/dep summary line, last-run line; filter toggle label; confirmation banner for unmet deps; hint bar.
+- **Run pane — running phase**: title with spec ID/name; attempt line; resume chip with copy hint; flash message line; log viewport with scroll; kill confirmation banner; hint bar.
+- **Run pane — result phase**: title; spec status + exit summary; remaining tasks bullet list; resume chip; flash line; log viewport; hint bar.
+- **Status pane**: title with current view label; summary bar (TODO/IN PROGRESS/DONE/BLOCKED/FAILED counts); focus line + optional info message; table view (ID/Name/Status/Deps/Last Run); graph viewport; hint bar (tab/f/focus etc.).
+- **Breakdown/spec split pane**:
+  - Intro screen text block.
+  - Input screen: multiline textarea, optional plan path note, inline error message, hint bar.
+  - Running screen: spinner + status line, resume chip + copy hint, flash line, log viewport, hint bar.
+  - Done screen (success): title, summary table (Spec ID/Name/Depends On), warnings list, resume chip, log tail, hint bar.
+  - Done screen (error): error message, resume chip, log tail, hint bar.
+- **Scaffold wizard**:
+  - Intro copy block.
+  - Mode picker list (strict/parallel) with selector cursor and hint bar.
+  - Acceptance commands step: existing commands list, single-line input with prompt/cursor styling, ability to drop last command, hint bar.
+  - Options step: specs root text input with inline error, focus highlight, hint bar.
+  - Confirm step: summary list of chosen options, hint bar.
+  - Running step: spinner + status line, hint bar.
+  - Complete step: lists of created/skipped files, hint bar.
+- **Settings form**: stacked rows for specs root input, mode toggle, default max attempts input, acceptance commands input, model/reasoning pairs (scaffold/run worker/run verifier/split), save row; focused row highlighting; hint line about navigation.
+- **Cross-cutting elements**: status badges, title text, warning/errors, flash/ephemeral messages, modal confirmation panels, key-help bar, resume/copy chip, spinner line, table/graph frames, viewport scroll styling, consistent spacing/margins.
 
-3) **Layout primitives** (replace/extend existing components with Glow patterns):
-   - `Page`: still clamps width, but must pad every line to target width and recenter like Glow’s stash view (background repaint safe). Reuse `lipgloss.PlaceHorizontal` as in `layout.go`, but size math mirrors Glow’s available-height calculation.
-   - `Row/Column/Gutter`: support responsive stack; add Glow-like fixed row height for list items (3 lines including gap) to avoid jitter.
-   - `Panel/Card`: retain, but styles must derive from Glow’s `styles.go` color placements (muted headers, accent borders on focus).
-   - `HelpBar`: new component modeled on `stashhelp.go` with mini vs full help, column rendering, and width-aware truncation. Toggle with `?`; ESC/enter behavior same as Glow.
-   - `StatusBar`: new component modeled on `pager.go` status bar—left note, center scroll pos, right help hint; message flash with timeout uses pagerStatusMessage pattern.
-   - `Paginator`: use `bubbles/paginator` with dot style and active/inactive colors from Glow; expose helper to set `PerPage` based on available height.
+## Phase 2 — Component kit (clone from references/glow)
+Implement under `internal/tui/components` (palette in `internal/tui/theme`). Use Glow as the visual source; keep names small and descriptive.
 
-4) **Input/display controls**:
-   - **Viewport**: enable `HighPerformanceRendering` flag like Glow; after scroll commands call `viewport.Sync` when flag is on.
-   - **Markdown**: use `glamour` renderer wired exactly like `renderWithGlamour` in `pager.go`, but feed Catppuccin-based style sheet (derive once in theme).
-   - **Lists/Tables**: tables keep alternating row shading; lists should follow Glow’s stash item layout: title line + meta line + spacer; use `reflow/truncate` to avoid wrapping.
-   - **Forms**: continue with `charmbracelet/huh`, but align focus/blur/error styles to Glow’s textinput and filter bar (prompt style, cursor style).
+### Foundation tokens
+- **Palette**: import/adapt colors from `references/glow/ui/styles.go` (`fuchsia`, `green`, `gray`, `yellowGreen`, status bar colors). Map to semantic tokens: primary, accent, muted, warning, success, surface, border.
+- **Typography & spacing**: base mono font; Title = bold; Hint = muted foreground; padding/margins pulled from Glow stash constants (`stashViewHorizontalPadding`, `stashViewTopPadding`).
 
-5) **Keys and help**:
-   - Define a single key map file per view (similar to `ui/keys.go`) and reuse labels across help/status bar.
-   - Mini help (one line) by default; full help on `?`; full help uses columns with padded keys/values as in `stashhelp.go` (renderHelp/miniHelpView/fullHelpView patterns).
+### Primitives
+- **Badge**: pill styles for TODO / IN PROGRESS / DONE / BLOCKED / FAILED using Glow colors; keep existing status logic but style from palette.
+- **TitleBar**: left-aligned bold title + optional view label; adopt Glow’s `logoStyle` padding/foreground.
+- **HelpBar**: reusable key legend, cloned from `references/glow/ui/stashhelp.go` mini/ full help rendering; accepts pairs of key/label strings and fits to width.
+- **Flash**: single-line info/warning banner (success, warning, danger) using Glow’s `statusMessage` styling from `stash.go`/`styles.go`.
+- **SpinnerLine**: inline spinner + text using Glow spinner style (`stashSpinnerStyle`) and dot spinner.
+- **TextInput**: single-line input with prompt/cursor colors from `stashInputPromptStyle` and `stashInputCursorStyle`.
+- **Textarea**: multiline input styled to match TextInput (border/padding, same prompt colors) for spec split.
+- **Modal**: centered/wide warning panel for confirmations (unmet deps, kill run) using `errorTitleStyle` background/foreground from `styles.go`.
+- **ResumeChip**: pill with command text and copy hint, borrowing `statusBarHelpStyle`/`statusBarMessageStyle` from `ui/pager.go`.
+- **ViewportCard**: bordered viewport with consistent padding and optional status bar at bottom (clone pager status bar structure from `ui/pager.go`). Used for logs, graph, and long content.
+- **SummaryTable**: monospace table renderer (width-aware) reused by Status graph/table and spec split results; header underline like Glow’s pager status bar.
 
-6) **Status messages and flashes**:
-   - Implement timed status flashes (success/error) using Glow’s `statusMessage` struct + timer reset logic; use same timeout (3s).
-   - For long operations, keep spinner/progress but pipe flash messages through status bar instead of inline text where possible.
+### Composites
+- **PageShell**: wraps every view with consistent top/bottom padding plus TitleBar + body + HelpBar.
+- **MenuList**: vertical list item renderer based on `stashItemView` highlighting rules (selected vs idle vs filtering). Used for Home and mode picker.
+- **SpecListItem**: two-line row (badge + ID/Name, dependency/last-run summary) using MenuList selection style; accepts flags for unmet deps and runnable state.
+- **SummaryBar**: row of badges with counts for each status (used in Status pane header).
+- **TableView**: bubble Table style override that matches palette (header border, selected row colors from Glow tab styles).
+- **GraphView**: `ViewportCard` showing dependency tree lines with same padding as TableView.
+- **FormField**: label/value row with focus indicator and shared TextInput; used by Settings and Scaffold options.
+- **BulletList**: simple list with accent bullets matching palette (for remaining tasks, warnings, created/skipped files).
 
-7) **Resizing rules**:
-   - On `tea.WindowSizeMsg`, recompute available width/height per Glow: subtract help height, status bar height, and paddings before setting list/pager widths/heights.
-   - Ensure backgrounds repaint: pad each rendered line to target width and, when centered, wrap with `lipgloss.PlaceHorizontal` like `Page.padHeight` and Glow’s stash view.
+## Phase 3 — Page rewrites (reuse only the new components)
+Keep data flow and hotkeys unchanged; swap rendering to the kit above.
 
-## View-by-view prescriptions (map Helm screens to Glow patterns)
-1) **Home (launcher)**
-   - Layout: follow Glow stash layout: header/logo area (use Helm logo/text), list of actions (Run, Spec Split, Status, Settings) rendered as fixed-height list rows with cursor highlight, and pagination if actions ever exceed view height (reuse paginator even if single page for consistent spacing).
-   - Help: mini help shows nav + enter/quit; full help mirrors stash sections (navigation, actions, app). Toggle with `?`.
-   - Status flash: reuse status bar for “repo initialized/needs scaffold” messages instead of inline alerts.
+- **Home**: `PageShell(TitleBar + MenuList(items=Run/Breakdown/Status/Quit) + HelpBar("↑/↓", "move", "enter", "select", "q", "quit"))`.
+- **Run list phase**: `PageShell` with `TitleBar("helm run")`, `SpecList` built from SpecListItem, filter label rendered via HelpBar, unmet-deps confirmation via Modal, flash via Flash. No bespoke lipgloss strings.
+- **Run running phase**: `TitleBar("Running <id> — <name>")`, `SpinnerLine` for attempts, optional `ResumeChip`, `Flash`, `ViewportCard` for logs, `Modal` for kill confirm, `HelpBar` for scroll/quit/copy hints.
+- **Run result phase**: `TitleBar("Run result — <id>")`, badge + exit summary line, `BulletList` for remaining tasks, `ResumeChip`, `Flash`, `ViewportCard` for logs, `HelpBar` for navigation.
+- **Status pane**: `TitleBar("Status overview — <Table|Graph>")`, `SummaryBar`, focus/info line styled as Hint, switchable `TableView`/`GraphView` inside a `ViewportCard`, `HelpBar` with tab/f/enter/r/q bindings.
+- **Breakdown/spec split**: Intro uses `PageShell` with text body. Input uses `Textarea` + plan note + error via Flash + HelpBar. Running uses `SpinnerLine`, `ResumeChip`, `ViewportCard` logs, `Flash`, `HelpBar`. Done success uses `TitleBar`, `SummaryTable`, `BulletList` for warnings, `ResumeChip`, `ViewportCard` log tail, `HelpBar`. Error case uses same components with danger Flash.
+- **Scaffold wizard**: Each step wrapped in `PageShell`. Intro/Confirm/Complete use text + BulletList. Mode picker uses `MenuList`. Commands step uses TextInput plus BulletList of existing commands and shared HelpBar. Options step uses FormField for specs root + inline error via Flash. Running step uses SpinnerLine. Complete step uses BulletList for created/skipped items.
+- **Settings**: `PageShell` with stacked `FormField` rows (Specs root input, Mode toggle, Default attempts input, Acceptance commands input, model/reasoning pairs, Save). HelpBar explains navigation; Flash for validation errors.
 
-2) **Run**
-   - Two-pane layout mirrors Glow’s stash (left list/right pager): left pane is run summary + controls, right pane is log viewport using pager patterns (status bar at bottom of pane, help toggle, line numbers optional). Use high-perf viewport.
-   - Key map: `run` view should use same mini/full help renderer; keys include start/cancel/resume/copy.
-   - Resume command pill uses Glow status message style (mint green on dark green) rendered via `StatusBar` message mode.
-
-3) **Status**
-   - Left column: list of specs with status badges; treat like stash list items (title + meta line with counts). Paginator if more than fits.
-   - Right column: detail pager showing selected spec summary/log tail; uses Glow pager rendering (status bar, help, glamour for markdown). Status flashes (e.g., “reloaded statuses”) go through status bar.
-   - Graph view: draw connectors with muted/primary colors, ASCII fallback; wrap inside panel with background fill matching Glow help bar background.
-
-4) **Spec Split**
-   - Intro/help: render with glamour markdown using Glow style.
-   - Input screen: textarea adopts Glow textinput styles (prompt/caret colors) and respects fixed heights; errors shown as status message flash + alert component.
-   - Running: left pane progress/spinner + status flash; right pane log viewport using pager model; mini help shows cancel/copy.
-   - Done: results table restyled using the same table style as Glow’s pager status bar colors for header; resume pill via status bar.
-
-5) **Scaffold**
-   - Multi-step form built with huh; outer layout mirrors Glow pager-with-status: form body sits above status bar, help bar shows keys (`tab` next, `shift+tab` prev, `enter` submit, `esc` cancel).
-   - Validation errors should surface both inline (huh) and via timed status message (error flavor).
-
-6) **Settings**
-   - Single-page huh form grouped into sections; background and padding match Glow pager view.
-   - Use the same help system; status flash on save or cancel.
-
-## Detailed implementation checklist
-- [ ] Replace current key hint bar with Glow-style `HelpBar` (mini/full) component and wire to `?` toggle on every screen.
-- [ ] Add `StatusBar` component with message timeout; use in Run (logs), Spec Split (running/done), Scaffold (form), Pager-like screens.
-- [ ] Introduce shared paginator helper mirroring `newStashPaginator` (dot style, active/inactive colors); use in any scrolling list/table where rows can exceed viewport.
-- [ ] Refactor list item rendering to fixed-height rows with title/meta/spacer like `stashItemView`; ensure truncation via `reflow/truncate` to avoid wrapping artifacts.
-- [ ] Implement glamour renderer with Catppuccin theme; reuse for markdown intros, result tables (where applicable), and status detail pages.
-- [ ] Set `viewport.HighPerformanceRendering` flag based on settings (default on); after any scroll command call `viewport.Sync` when enabled.
-- [ ] Ensure every view pads to window width and fills background color (no unpainted columns after resize).
-- [ ] Add ASCII fallback path for borders/icons identical to current theme, but validated in all new components.
-
-## Acceptance criteria
-- Screens (Home, Run, Status, Scaffold, Spec Split, Settings) visibly follow Glow patterns: mini/full help toggle, status bar with timed messages, fixed-height list rows, paginator dots, glamour-rendered markdown, high-performance viewport behavior.
-- No view uses raw color literals or bespoke spacing; all styles come from theme tokens mapped to Glow-style adaptive colors.
-- At 80×24 terminal: layouts collapse cleanly (list stacks above pager), help does not wrap, status bar and background fill the full width without artifacts.
-- Status flashes time out after 3 seconds; toggling help recalculates viewport height without clipping content.
-- `go test ./...` and `make all` pass; linting does not report dead code from removed bespoke components.
-- Implementation cites Glow reference in code comments where patterns are mirrored (one-line comment linking file/function name), ensuring future maintainers know the source pattern.
+## Acceptance Criteria (implementation-level)
+- All Bubble Tea views import styling/helpers from `internal/tui/components` and `internal/tui/theme`; no duplicate lipgloss styles inside individual panes.
+- Colors, padding, and selection highlights match the Glow-derived palette across every screen.
+- Existing keybindings and behaviors continue to work (list navigation, filters, focus modes, resume copy, quit semantics).
+- `make all` succeeds.
 
 ## Depends on
-- spec-00-foundation — Go module and CLI skeleton
-- spec-01-config-metadata — Repo config, metadata, spec discovery
-- spec-04-run-command — TUI shell and Run pane
-- spec-05-spec-splitting-command — Spec splitting flow
-- spec-06-status-command — Status view foundation
+- spec-00-foundation — module + CLI skeleton
+- spec-01-config-metadata — settings/metadata/discovery
+- spec-02-scaffold-command — scaffold flow
+- spec-03-implement-runner — runner wiring
+- spec-04-run-command — TUI shell + Run pane
+- spec-05-spec-splitting-command — Breakdown/spec split pane
+- spec-06-status-command — Status pane
