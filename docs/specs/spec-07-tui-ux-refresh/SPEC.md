@@ -2,12 +2,12 @@
 
 ## Summary
 
-Refresh the Helm TUI with a professional, minimalist visual system using existing Bubble Tea ecosystem libraries (no hand-rolled styling). Standardize theme, layout, components, and help cues across all panes (home, Run, Status, Scaffold, Spec Split, Settings) so the interface looks intentional and is easy to scan.
+Refresh the Helm TUI with a professional, minimalist visual system using existing Bubble Tea ecosystem libraries (no hand-rolled styling). Standardize theme, layout, components, and help cues across all panes (home, Run, Status, Scaffold, Spec Split, Settings) so the interface looks intentional and is easy to scan—while relying only on public, fetchable modules.
 
 ## Goals
 
 - Adopt a curated theme (Catppuccin or similar) and apply it consistently via reusable components.
-- Use off-the-shelf libraries (lipgloss-contrib, catppuccin/lipgloss, charmbracelet/huh, glamour, bubbles/table/list/progress/spinner) instead of custom layout/styling.
+- Use off-the-shelf libraries that exist publicly (lipgloss, catppuccin/go, charmbracelet/huh, glamour, bubbles/table/list/progress/spinner) instead of custom layout/styling. Provide any missing layout primitives via a small in-repo components package built on lipgloss.
 - Unify layout primitives (page, cards/panels, key-hint bar) and spacing across views with responsive behavior for narrow terminals.
 - Improve readability: clear headers/subtitles, consistent badges, borders, and key hints; markdown-rendered copy for intros/help.
 - Make forms (Scaffold, Settings) polished and validated via huh forms; minimize bespoke textinput wiring.
@@ -21,12 +21,12 @@ Refresh the Helm TUI with a professional, minimalist visual system using existin
 ## Detailed Requirements
 
 1) **Theme & Tokens**
-- Use `catppuccin/lipgloss` (Mocha palette by default). Provide a light variant toggle in config and a low-color (256) fallback.
+- Use `github.com/catppuccin/go` for palette data (Mocha default, Latte for light). Add helpers to convert to lipgloss colors and provide a low-color (256) fallback.
 - Define single-source tokens: colors (bg/surface/overlay/muted/primary/success/warn/error), radii, border styles, spacing scale, and typography weights.
 - Badge styles derive from tokens; no ad-hoc color codes in views.
 
-2) **Layout Primitives (lipgloss-contrib)**
-- Introduce flex-based `Page`, `Row`, `Column`, `Gutter` helpers for consistent width (clamp ~92–110 cols) and padding.
+2) **Layout Primitives (internal lipgloss-based components)**
+- Implement `Page`, `Row`, `Column`, `Gutter` helpers in an internal package (e.g., `internal/tui/components`) using lipgloss joins/place/width utilities. Clamp content width ~92–110 cols with consistent padding.
 - Components:
   - `Panel`/`Card` with title, optional subtitle, body.
   - `KeyHints` bar rendered uniformly at bottom of each view.
@@ -36,7 +36,7 @@ Refresh the Helm TUI with a professional, minimalist visual system using existin
 
 3) **Reusable Libraries**
 - **Forms:** Replace scaffold + settings flows with `charmbracelet/huh` forms (inputs, selects, multiselect, confirm). Validation messages come from huh; focus styling uses theme tokens.
-- **Markdown copy:** Render intros/help/summaries with `glamour` using the Catppuccin style for headings, lists, code blocks.
+- **Markdown copy:** Render intros/help/summaries with `glamour` using a Catppuccin-derived style sheet built from the palette helper.
 - **Lists/Tables:** Keep `bubbles/list` and `bubbles/table` but restyle via theme tokens; add alternating row shading and focused border.
 - **Progress/Spinner:** Use `bubbles/progress` with a gradient (primary→success) and themed spinner for long operations.
 
@@ -57,10 +57,10 @@ Refresh the Helm TUI with a professional, minimalist visual system using existin
 - `make all` passes.
 - Home, Run, Status, Scaffold, Spec Split, and Settings panes render using the new theme tokens and shared components—no view contains raw color codes or ad-hoc borders.
 - Scaffold and Settings flows are implemented with `charmbracelet/huh` forms, including validation and focus styling.
-- Markdown rendering (glamour) is used for multi-paragraph copy (intros/help) with the theme style.
+- Markdown rendering (glamour) is used for multi-paragraph copy (intros/help) with the Catppuccin-based theme style.
 - Key hint bar appears and is consistent in every pane; warnings/errors use the Alert component.
 - Narrow-width test: at 80 cols, layouts collapse to readable single-column stacks without clipping key hints or badges.
-- Palette switch (dark default, light fallback) is selectable via config or env and applies across all components.
+- Palette switch (dark default, light fallback) is selectable via config or env and applies across all components using Catppuccin Mocha/Latte via `catppuccin/go`.
 
 ## Depends on
 
