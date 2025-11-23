@@ -1,0 +1,3 @@
+[submodule "references/glow"]
+	path = references/glow
+	url = https://github.com/charmbracelet/glow
