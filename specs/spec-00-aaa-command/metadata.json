@@ -1,0 +1,9 @@
+{
+  "id": "spec-00-aaa-command",
+  "name": "Add basic aaa CLI command",
+  "status": "todo",
+  "dependsOn": [],
+  "acceptanceCommands": [
+    "pnpm all"
+  ]
+}

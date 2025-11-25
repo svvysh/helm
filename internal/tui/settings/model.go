@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/polarzero/helm/internal/config"
+	"github.com/polarzero/helm/internal/tui/components"
 )
 
 // ErrCanceled is returned when the user exits without saving.
@@ -29,7 +30,7 @@ func Run(opts Options) (*config.Settings, error) {
 	}
 	config.ApplyDefaults(initial)
 	initialModel := newModel(*initial)
-	prog := tea.NewProgram(initialModel)
+	prog := tea.NewProgram(initialModel, tea.WithAltScreen())
 	res, err := prog.Run()
 	if err != nil {
 		return nil, err
@@ -87,17 +88,17 @@ type model struct {
 }
 
 func newModel(settings config.Settings) model {
-	root := textinput.New()
+	root := components.NewTextInput()
 	root.Placeholder = "specs"
 	root.SetValue(settings.SpecsRoot)
 	root.Prompt = ""
 
-	max := textinput.New()
+	max := components.NewTextInput()
 	max.Placeholder = "2"
 	max.SetValue(strconv.Itoa(settings.DefaultMaxAttempts))
 	max.Prompt = ""
 
-	ac := textinput.New()
+	ac := components.NewTextInput()
 	ac.Placeholder = "go test ./..."
 	ac.SetValue(strings.Join(settings.AcceptanceCommands, ","))
 	ac.Prompt = ""
@@ -236,29 +237,36 @@ func rotate(list []string, current string, delta int) string {
 }
 
 func (m model) View() string {
-	lines := []string{
-		"Use up/down to move, left/right to change options, enter to save, esc to cancel.",
-		"",
-		label(m.cursor == fieldSpecsRoot, "Specs root", m.rootInput.View()),
-		label(m.cursor == fieldMode, "Mode", string(m.settings.Mode)),
-		label(m.cursor == fieldMaxAttempts, "Default max attempts", m.maxInput.View()),
-		label(m.cursor == fieldAcceptance, "Acceptance commands (comma-separated)", m.acInput.View()),
-		label(m.cursor == fieldScaffoldModel, "Scaffold model", m.settings.CodexScaffold.Model),
-		label(m.cursor == fieldScaffoldReasoning, "Scaffold reasoning", m.settings.CodexScaffold.Reasoning),
-		label(m.cursor == fieldRunImplModel, "Run worker model", m.settings.CodexRunImpl.Model),
-		label(m.cursor == fieldRunImplReasoning, "Run worker reasoning", m.settings.CodexRunImpl.Reasoning),
-		label(m.cursor == fieldRunVerModel, "Run verifier model", m.settings.CodexRunVer.Model),
-		label(m.cursor == fieldRunVerReasoning, "Run verifier reasoning", m.settings.CodexRunVer.Reasoning),
-		label(m.cursor == fieldSplitModel, "Split model", m.settings.CodexSplit.Model),
-		label(m.cursor == fieldSplitReasoning, "Split reasoning", m.settings.CodexSplit.Reasoning),
-		label(m.cursor == fieldSave, "Save", "press enter"),
+	fields := []components.FormField{
+		{Label: "Specs root", Value: m.rootInput.View(), Focused: m.cursor == fieldSpecsRoot},
+		{Label: "Mode", Value: string(m.settings.Mode), Focused: m.cursor == fieldMode, Description: "left/right to toggle"},
+		{Label: "Default max attempts", Value: m.maxInput.View(), Focused: m.cursor == fieldMaxAttempts},
+		{Label: "Acceptance commands (comma-separated)", Value: m.acInput.View(), Focused: m.cursor == fieldAcceptance},
+		{Label: "Scaffold model", Value: m.settings.CodexScaffold.Model, Focused: m.cursor == fieldScaffoldModel},
+		{Label: "Scaffold reasoning", Value: m.settings.CodexScaffold.Reasoning, Focused: m.cursor == fieldScaffoldReasoning},
+		{Label: "Run worker model", Value: m.settings.CodexRunImpl.Model, Focused: m.cursor == fieldRunImplModel},
+		{Label: "Run worker reasoning", Value: m.settings.CodexRunImpl.Reasoning, Focused: m.cursor == fieldRunImplReasoning},
+		{Label: "Run verifier model", Value: m.settings.CodexRunVer.Model, Focused: m.cursor == fieldRunVerModel},
+		{Label: "Run verifier reasoning", Value: m.settings.CodexRunVer.Reasoning, Focused: m.cursor == fieldRunVerReasoning},
+		{Label: "Split model", Value: m.settings.CodexSplit.Model, Focused: m.cursor == fieldSplitModel},
+		{Label: "Split reasoning", Value: m.settings.CodexSplit.Reasoning, Focused: m.cursor == fieldSplitReasoning},
+		{Label: "Save", Value: "press enter", Focused: m.cursor == fieldSave},
 	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
-func label(focused bool, name, value string) string {
-	if focused {
-		return fmt.Sprintf("> %s: %s", name, value)
+	lines := make([]string, 0, len(fields)*2)
+	for _, field := range fields {
+		lines = append(lines, components.FormFieldView(field))
+		lines = append(lines, "")
 	}
-	return fmt.Sprintf("  %s: %s", name, value)
+	help := []components.HelpEntry{
+		{Key: "↑/↓", Label: "move"},
+		{Key: "←/→", Label: "change option"},
+		{Key: "enter", Label: "save"},
+		{Key: "esc", Label: "cancel"},
+	}
+	body := strings.Join(lines, "\n")
+	return components.PageShell(components.PageShellOptions{
+		Title:       components.TitleConfig{Title: "Helm settings"},
+		Body:        body,
+		HelpEntries: help,
+	})
 }

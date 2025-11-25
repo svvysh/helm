@@ -4,35 +4,53 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
+	"github.com/polarzero/helm/internal/tui/components"
 	"github.com/polarzero/helm/internal/tui/theme"
 )
 
 func renderView(m *model) string {
-	var b strings.Builder
-
-	title := theme.TitleStyle.Render(fmt.Sprintf("Status overview — %s view", viewLabel(m.viewMode)))
-	b.WriteString(title)
-	b.WriteString("\n")
-	b.WriteString(renderSummaryLine(m.summary))
-	b.WriteString("\n")
-	b.WriteString(theme.HintStyle.Render(focusLine(m)))
-	if m.infoMessage != "" {
-		b.WriteString("\n")
-		b.WriteString(theme.HintStyle.Render(m.infoMessage))
+	body := []string{
+		components.SummaryBar(m.summary.counts),
+		components.SummaryTable(components.SummaryTableData{
+			Headers: []string{"Status", "Count"},
+			Rows: [][]string{
+				{"TODO", fmt.Sprintf("%d", m.summary.counts[theme.StatusTodo])},
+				{"IN PROGRESS", fmt.Sprintf("%d", m.summary.counts[theme.StatusInProgress])},
+				{"DONE", fmt.Sprintf("%d", m.summary.counts[theme.StatusDone])},
+				{"BLOCKED", fmt.Sprintf("%d", m.summary.counts[theme.StatusBlocked])},
+				{"FAILED", fmt.Sprintf("%d", m.summary.counts[theme.StatusFailed])},
+			},
+		}),
+		theme.HintStyle.Render(focusLine(m)),
 	}
-	b.WriteString("\n\n")
+	if m.infoMessage != "" {
+		body = append(body, theme.HintStyle.Render(m.infoMessage))
+	}
 
 	if m.viewMode == viewTable {
-		b.WriteString(m.table.View())
+		body = append(body, m.table.View())
 	} else {
-		b.WriteString(m.graphViewport.View())
+		body = append(body, components.ViewportCard(components.ViewportCardOptions{
+			Width:   m.width,
+			Content: m.graphViewport.View(),
+			Status:  fmt.Sprintf("%d specs shown", len(m.visible)),
+		}))
 	}
 
-	b.WriteString("\n\n")
-	b.WriteString(theme.HintStyle.Render("[tab] toggle graph/table  [f] cycle focus  [enter] set subtree  [r] reload  [q] back"))
-	return b.String()
+	help := []components.HelpEntry{
+		{Key: "tab", Label: "toggle view"},
+		{Key: "f", Label: "cycle focus"},
+		{Key: "enter", Label: "set subtree"},
+		{Key: "r", Label: "reload"},
+		{Key: "q", Label: "back"},
+	}
+
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: fmt.Sprintf("Status overview — %s", viewLabel(m.viewMode))},
+		Body:        strings.Join(body, "\n\n"),
+		HelpEntries: help,
+	})
 }
 
 func viewLabel(mode viewMode) string {
@@ -64,33 +82,4 @@ func focusLine(m *model) string {
 	default:
 		return fmt.Sprintf("Focus: All specs (%d total)", len(m.entries))
 	}
-}
-
-func renderSummaryLine(sum summaryCounts) string {
-	var parts []string
-	parts = append(parts, badge(theme.StatusTodo, sum.counts[theme.StatusTodo]))
-	parts = append(parts, badge(theme.StatusInProgress, sum.counts[theme.StatusInProgress]))
-	parts = append(parts, badge(theme.StatusDone, sum.counts[theme.StatusDone]))
-	parts = append(parts, badge(theme.StatusBlocked, sum.counts[theme.StatusBlocked]))
-	parts = append(parts, badge(theme.StatusFailed, sum.counts[theme.StatusFailed]))
-	return strings.Join(parts, "  ")
-}
-
-func badge(category theme.StatusCategory, count int) string {
-	var style lipgloss.Style
-	var label string
-
-	switch category {
-	case theme.StatusDone:
-		style, label = theme.BadgeDone, "DONE"
-	case theme.StatusInProgress:
-		style, label = theme.BadgeProgress, "IN PROGRESS"
-	case theme.StatusBlocked:
-		style, label = theme.BadgeBlocked, "BLOCKED"
-	case theme.StatusFailed:
-		style, label = theme.BadgeFailed, "FAILED"
-	default:
-		style, label = theme.BadgeTodo, "TODO"
-	}
-	return style.Render(fmt.Sprintf("%s %d", label, count))
 }

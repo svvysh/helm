@@ -9,19 +9,24 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/polarzero/helm/internal/config"
 	splitting "github.com/polarzero/helm/internal/specsplit"
+	"github.com/polarzero/helm/internal/tui/components"
+	"github.com/polarzero/helm/internal/tui/theme"
 )
 
 // ErrCanceled indicates the user exited before running the split.
-var ErrCanceled = errors.New("spec split canceled")
+var (
+	ErrCanceled = errors.New("spec split canceled")
+	ErrQuitAll  = errors.New("spec split quit")
+)
 
 // Outcome is returned by the split TUI.
 type Outcome struct {
@@ -42,7 +47,7 @@ type Options struct {
 // Run launches the spec split TUI.
 func Run(opts Options) (*Outcome, error) {
 	mdl := newModel(opts)
-	prog := tea.NewProgram(mdl)
+	prog := tea.NewProgram(mdl, tea.WithAltScreen())
 	res, err := prog.Run()
 	if err != nil {
 		return nil, err
@@ -50,6 +55,9 @@ func Run(opts Options) (*Outcome, error) {
 	finalModel, ok := res.(*model)
 	if !ok {
 		return nil, fmt.Errorf("unexpected model type %T", res)
+	}
+	if finalModel.err != nil {
+		return nil, finalModel.err
 	}
 	if finalModel.canceled {
 		return nil, ErrCanceled
@@ -75,9 +83,12 @@ type model struct {
 	opts  Options
 	phase phase
 
-	ta      textarea.Model
-	spinner spinner.Model
-	vp      viewport.Model
+	draft       string
+	editorPath  string
+	spinner     spinner.Model
+	vp          viewport.Model
+	confirmKill bool
+	killKey     string
 
 	width  int
 	height int
@@ -99,23 +110,14 @@ type model struct {
 }
 
 func newModel(opts Options) *model {
-	ta := textarea.New()
-	ta.SetWidth(80)
-	ta.SetHeight(18)
-	ta.ShowLineNumbers = true
-	ta.Placeholder = "Paste the large spec here..."
-	ta.SetValue(opts.InitialInput)
-	ta.Focus()
-
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
+	sp := components.NewSpinner()
 
 	vp := viewport.New(80, 12)
 
 	return &model{
 		opts:    opts,
 		phase:   phaseIntro,
-		ta:      ta,
+		draft:   opts.InitialInput,
 		spinner: sp,
 		vp:      vp,
 	}
@@ -128,42 +130,55 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = v.Width
 		m.height = v.Height
-		m.ta.SetWidth(max(20, v.Width-4))
-		m.ta.SetHeight(max(10, v.Height-10))
-		m.vp.Width = max(20, v.Width-4)
-		m.vp.Height = max(8, v.Height-8)
+		contentWidth := max(20, v.Width-(theme.ViewHorizontalPadding*2)-6)
+		m.vp.Width = contentWidth
+		m.vp.Height = max(3, min(5, v.Height-12))
 		return m, nil
 	case tea.KeyMsg:
 		if v.Type == tea.KeyCtrlC {
-			if m.cancelSplit != nil {
-				m.cancelSplit()
-			}
-			m.canceled = true
-			return m, tea.Quit
-		}
-		if v.String() == "q" {
 			if m.phase == phaseRunning && m.cancelSplit != nil {
 				m.cancelSplit()
 			}
 			m.canceled = true
+			m.err = ErrQuitAll
 			return m, tea.Quit
 		}
-		if v.Type == tea.KeyEsc {
-			if m.phase == phaseInput {
-				m.canceled = true
+		// Only handle q/esc here for non-running phases; running phase handles double-press confirmation.
+		if m.phase != phaseRunning {
+			switch v.String() {
+			case "q":
+				m.err = ErrQuitAll
 				return m, tea.Quit
-			}
-			if m.phase == phaseRunning {
-				if m.cancelSplit != nil {
-					m.cancelSplit()
+			case "esc":
+				if m.phase == phaseInput {
+					m.phase = phaseIntro
+					m.inputErr = ""
+					return m, nil
 				}
 				m.canceled = true
 				return m, tea.Quit
 			}
-			if m.phase == phaseDone {
-				return m, tea.Quit
-			}
 		}
+	case editorFinishedMsg:
+		if m.phase != phaseInput {
+			return m, nil
+		}
+		if v.err != nil {
+			m.inputErr = fmt.Sprintf("Editor error: %v", v.err)
+			return m, nil
+		}
+		if m.editorPath == "" {
+			m.inputErr = "Editor finished but no file to read"
+			return m, nil
+		}
+		data, err := os.ReadFile(m.editorPath)
+		if err != nil {
+			m.inputErr = fmt.Sprintf("Read editor file: %v", err)
+			return m, nil
+		}
+		m.draft = string(data)
+		m.inputErr = ""
+		return m, nil
 	}
 
 	// Hook up stream when runner starts
@@ -209,53 +224,66 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.Type {
 		case tea.KeyEnter:
-			trimmed := strings.TrimSpace(m.ta.Value())
+			// Allow Option/Alt+Enter or Shift/Ctrl+Enter to insert newlines; only plain Enter starts splitting.
+			if key.Alt || key.String() == "shift+enter" || key.String() == "ctrl+enter" {
+				m.inputErr = ""
+				return m, m.openEditorCmd()
+			}
+			trimmed := strings.TrimSpace(m.draft)
 			if trimmed == "" {
-				m.inputErr = "Spec content is required"
-				return m, nil
+				m.inputErr = ""
+				return m, m.openEditorCmd()
 			}
 			m.inputErr = ""
 			m.phase = phaseRunning
 			m.running = true
+			m.confirmKill = false
+			m.killKey = ""
 			m.logs = nil
 			m.flash = ""
 			m.sessionID = ""
 			m.resumeCmd = ""
 			m.vp.SetContent("")
-			return m, tea.Batch(m.spinner.Tick, startSplitCmd(m.opts, m.ta.Value()))
+			return m, tea.Batch(m.spinner.Tick, startSplitCmd(m.opts, m.draft))
 		case tea.KeyCtrlC:
 			m.canceled = true
 			return m, tea.Quit
-		case tea.KeyCtrlL:
-			m.ta.SetValue("")
-		case tea.KeyCtrlO:
-			// Load from file prompt: reuse textarea as quick path input.
-			path := strings.TrimSpace(m.ta.Value())
-			if path == "" {
-				m.inputErr = "Enter a file path then press Ctrl+O"
-				return m, nil
+		case tea.KeyRunes:
+			if strings.EqualFold(key.String(), "e") {
+				m.inputErr = ""
+				return m, m.openEditorCmd()
 			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				m.inputErr = fmt.Sprintf("read file: %v", err)
-				return m, nil
-			}
-			m.ta.SetValue(string(data))
-			m.ta.CursorEnd()
-			m.inputErr = fmt.Sprintf("Loaded %s", path)
-			return m, nil
 		}
 	}
-	var cmd tea.Cmd
-	m.ta, cmd = m.ta.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		if key.String() == "c" && m.resumeCmd != "" {
-			m.setFlash(m.copyResumeCommand())
-			return m, nil
+	switch key := msg.(type) {
+	case killConfirmTimeoutMsg:
+		m.confirmKill = false
+		m.killKey = ""
+		return m, nil
+	case tea.KeyMsg:
+		switch key.String() {
+		case "c":
+			if m.resumeCmd != "" {
+				m.setFlash(m.copyResumeCommand())
+				return m, nil
+			}
+		case "esc", "q":
+			if m.confirmKill && m.killKey == key.String() {
+				if key.String() == "q" {
+					m.err = ErrQuitAll
+				}
+				if m.cancelSplit != nil {
+					m.cancelSplit()
+				}
+				return m, tea.Quit
+			}
+			m.confirmKill = true
+			m.killKey = key.String()
+			return m, killConfirmTimeoutCmd()
 		}
 	}
 	switch v := msg.(type) {
@@ -267,6 +295,8 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = v.result
 		m.err = v.err
 		m.phase = phaseDone
+		m.confirmKill = false
+		m.killKey = ""
 		m.stream = nil
 		if v.err != nil {
 			m.appendLog(splitLogMsg{stream: "stderr", text: v.err.Error()})
@@ -276,6 +306,8 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// stream closed without finish message
 		m.running = false
 		m.phase = phaseDone
+		m.confirmKill = false
+		m.killKey = ""
 		return m, nil
 	}
 	var cmd tea.Cmd
@@ -337,6 +369,26 @@ func (m *model) View() string {
 	}
 }
 
+func (m *model) openEditorCmd() tea.Cmd {
+	path := m.editorPath
+	if path == "" {
+		tmp, err := os.CreateTemp("", "helm-spec-*.md")
+		if err != nil {
+			m.inputErr = fmt.Sprintf("Open editor: %v", err)
+			return nil
+		}
+		path = tmp.Name()
+		m.editorPath = path
+		_ = tmp.Close()
+	}
+	if err := os.WriteFile(path, []byte(m.draft), 0o600); err != nil {
+		m.inputErr = fmt.Sprintf("Save draft for editor: %v", err)
+		return nil
+	}
+	lineno := max(1, strings.Count(m.draft, "\n")+1)
+	return openEditor(path, lineno)
+}
+
 func startSplitCmd(opts Options, rawSpec string) tea.Cmd {
 	return func() tea.Msg {
 		stream := make(chan tea.Msg)
@@ -371,6 +423,8 @@ type runnerStartMsg struct {
 	cancel context.CancelFunc
 }
 
+type killConfirmTimeoutMsg struct{}
+
 type splitLogMsg struct {
 	stream string
 	text   string
@@ -394,6 +448,10 @@ func listenStream(ch <-chan tea.Msg) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+func killConfirmTimeoutCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return killConfirmTimeoutMsg{} })
 }
 
 func (m *model) captureSessionID(line, _ string) {
@@ -465,6 +523,13 @@ func (w *lineEmitter) close() {
 
 func max(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b

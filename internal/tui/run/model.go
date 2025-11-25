@@ -6,15 +6,18 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/polarzero/helm/internal/config"
 	"github.com/polarzero/helm/internal/metadata"
 	"github.com/polarzero/helm/internal/specs"
+	"github.com/polarzero/helm/internal/tui/components"
 )
 
 // Options configures the run TUI.
@@ -54,12 +57,16 @@ const (
 	phaseResult
 )
 
-var sessionIDRe = regexp.MustCompile(`(?i)^session id:\s*([a-f0-9-]{36})$`)
+var (
+	sessionIDRe = regexp.MustCompile(`(?i)^session id:\s*([a-f0-9-]{36})$`)
+	ErrQuitAll  = errors.New("run quit")
+)
 
 type model struct {
 	opts           Options
 	phase          phase
 	list           list.Model
+	spinner        spinner.Model
 	specs          []*specs.SpecFolder
 	filterRunnable bool
 	confirmUnmet   bool
@@ -74,6 +81,7 @@ type model struct {
 	running     *runState
 	result      *resultState
 	confirmKill bool
+	killKey     string
 	flash       string
 }
 
@@ -106,11 +114,13 @@ func newModel(opts Options) (*model, error) {
 	lst.SetShowHelp(false)
 
 	vp := viewport.New(0, 0)
+	sp := components.NewSpinner()
 
 	m := &model{
 		opts:     opts,
 		phase:    phaseList,
 		list:     lst,
+		spinner:  sp,
 		specs:    folders,
 		viewport: vp,
 		logLimit: 2000,
@@ -140,23 +150,41 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	var cmd tea.Cmd
 	switch m.phase {
 	case phaseList:
-		return m.updateList(msg)
+		_, cmd = m.updateList(msg)
 	case phaseRunning:
-		return m.updateRunning(msg)
+		_, cmd = m.updateRunning(msg)
 	case phaseResult:
-		return m.updateResult(msg)
+		_, cmd = m.updateResult(msg)
 	default:
 		return m, nil
 	}
+
+	if m.phase == phaseRunning {
+		var spinnerCmd tea.Cmd
+		m.spinner, spinnerCmd = m.spinner.Update(msg)
+		if cmd != nil || spinnerCmd != nil {
+			return m, tea.Batch(cmd, spinnerCmd)
+		}
+		return m, spinnerCmd
+	}
+	return m, cmd
 }
 
 func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "esc":
+			if m.confirmUnmet {
+				m.confirmUnmet = false
+				return m, nil
+			}
+			return m, tea.Quit
 		case "ctrl+c", "q":
+			m.err = ErrQuitAll
 			return m, tea.Quit
 		case "f":
 			preserve := ""
@@ -198,7 +226,7 @@ func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.startRun(item.folder)
 				}
 			}
-		case "n", "esc":
+		case "n":
 			if m.confirmUnmet {
 				m.confirmUnmet = false
 				return m, nil
@@ -217,25 +245,30 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case killConfirmTimeoutMsg:
+		m.confirmKill = false
+		m.killKey = ""
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
-			if m.confirmKill {
-				return m, nil
+		case "esc", "q":
+			if m.confirmKill && m.killKey == msg.String() {
+				m.killProcess()
+				// Exit back to caller; run keeps streaming but TUI closes.
+				if msg.String() == "q" {
+					m.err = ErrQuitAll
+				}
+				return m, tea.Quit
 			}
 			m.confirmKill = true
-			return m, nil
-		case "y":
-			if m.confirmKill {
-				m.killProcess()
-				return m, nil
-			}
+			m.killKey = msg.String()
+			return m, killConfirmTimeoutCmd()
 		case "c":
 			if m.running != nil && m.running.resumeCmd != "" {
 				m.setFlash(m.copyResumeCommand())
 				return m, nil
 			}
-		case "n", "esc":
+		case "n":
 			if m.confirmKill {
 				m.confirmKill = false
 				return m, nil
@@ -308,9 +341,10 @@ func (m *model) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
-		case "q":
+		case "ctrl+c", "esc", "q":
+			if msg.String() == "q" {
+				m.err = ErrQuitAll
+			}
 			return m, tea.Quit
 		case "c":
 			if m.result != nil && m.result.resumeCmd != "" {
@@ -404,7 +438,7 @@ func (m *model) startRun(folder *specs.SpecFolder) tea.Cmd {
 	m.viewport.GotoTop()
 	m.running = &runState{spec: folder}
 	m.resize()
-	return startRunnerCmd(m.opts, folder)
+	return tea.Batch(m.spinner.Tick, startRunnerCmd(m.opts, folder))
 }
 
 func (m *model) appendLog(msg runnerLogMsg) {
@@ -515,6 +549,10 @@ func (m *model) setFlash(msg string) {
 	m.flash = msg
 }
 
+func killConfirmTimeoutCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return killConfirmTimeoutMsg{} })
+}
+
 func buildLogContent(entries []logEntry) string {
 	var b strings.Builder
 	for i, entry := range entries {
@@ -558,3 +596,5 @@ type resultState struct {
 	remaining []string
 	resumeCmd string
 }
+
+type killConfirmTimeoutMsg struct{}

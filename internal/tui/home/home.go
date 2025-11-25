@@ -4,6 +4,8 @@ import (
 	"errors"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/polarzero/helm/internal/tui/components"
 )
 
 // Selection enumerates home-menu choices.
@@ -35,7 +37,7 @@ var ErrCanceled = errors.New("home canceled")
 // Run presents a minimal home menu and returns the chosen action.
 func Run(_ Options) (*Result, error) {
 	m := &model{cursor: 0}
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {
 		return nil, err
@@ -55,6 +57,7 @@ type model struct {
 	selection Selection
 	canceled  bool
 	hasChosen bool
+	width     int
 }
 
 var items = []struct {
@@ -71,6 +74,9 @@ func (m model) Init() tea.Cmd { return nil }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -97,15 +103,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
-	var out string
-	out += "Helm — choose an action:\n\n"
+	menuItems := make([]components.MenuItem, len(items))
 	for i, item := range items {
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
-		}
-		out += cursor + " " + item.title + "\n"
+		menuItems[i] = components.MenuItem{Title: item.title}
 	}
-	out += "\n↑/↓ to move, enter to select, q to quit"
-	return out
+	body := components.MenuList(m.width, menuItems, m.cursor)
+	help := []components.HelpEntry{
+		{Key: "↑/↓", Label: "move"},
+		{Key: "enter", Label: "select"},
+		{Key: "q", Label: "quit"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: "Helm — choose an action"},
+		Body:        body,
+		HelpEntries: help,
+	})
 }

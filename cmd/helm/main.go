@@ -148,14 +148,23 @@ func newRootCmd() *cobra.Command {
 					SpecsRoot: specsRoot,
 					Settings:  settings,
 				}); err != nil {
+					if errors.Is(err, specsplittui.ErrQuitAll) || errors.Is(err, runtui.ErrQuitAll) {
+						return nil
+					}
 					return err
 				}
 			case home.SelectBreakdown:
 				if err := runSpecSplit(cmd, settings, specsRoot, "", ""); err != nil {
+					if errors.Is(err, specsplittui.ErrQuitAll) {
+						return nil
+					}
 					return err
 				}
 			case home.SelectStatus:
 				if err := statusui.Run(statusui.Options{SpecsRoot: specsRoot}); err != nil {
+					if errors.Is(err, statusui.ErrQuitAll) {
+						return nil
+					}
 					return err
 				}
 			case home.SelectQuit:
@@ -224,11 +233,17 @@ func newRunCmd() *cobra.Command {
 			}
 
 			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
-			return runtui.Run(runtui.Options{
+			if err := runtui.Run(runtui.Options{
 				Root:      root,
 				SpecsRoot: specsRoot,
 				Settings:  settings,
-			})
+			}); err != nil {
+				if errors.Is(err, runtui.ErrQuitAll) {
+					return nil
+				}
+				return err
+			}
+			return nil
 		},
 	}
 	return cmd
@@ -260,7 +275,13 @@ func newSpecCmd() *cobra.Command {
 				return err
 			}
 			specsRoot := config.ResolveSpecsRoot(root, rc.SpecsRoot)
-			return runSpecSplit(cmd, settings, specsRoot, filePath, planPath)
+			if err := runSpecSplit(cmd, settings, specsRoot, filePath, planPath); err != nil {
+				if errors.Is(err, specsplittui.ErrQuitAll) {
+					return nil
+				}
+				return err
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&filePath, "file", "f", "", "optional path to a spec text file to preload")
@@ -283,7 +304,13 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf("determine working directory: %w", err)
 			}
 			specsRoot := config.ResolveSpecsRoot(root, settings.SpecsRoot)
-			return statusui.Run(statusui.Options{SpecsRoot: specsRoot})
+			if err := statusui.Run(statusui.Options{SpecsRoot: specsRoot}); err != nil {
+				if errors.Is(err, statusui.ErrQuitAll) {
+					return nil
+				}
+				return err
+			}
+			return nil
 		},
 	}
 }
@@ -357,6 +384,9 @@ func runSpecSplit(cmd *cobra.Command, settings *config.Settings, specsRoot, file
 		PlanPath:           planPath,
 	})
 	if err != nil {
+		if errors.Is(err, specsplittui.ErrQuitAll) {
+			return specsplittui.ErrQuitAll
+		}
 		if errors.Is(err, specsplittui.ErrCanceled) {
 			fmt.Fprintln(cmd.OutOrStdout(), "Spec split canceled.")
 			return nil

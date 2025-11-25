@@ -77,7 +77,14 @@ Keep data flow and hotkeys unchanged; swap rendering to the kit above.
 - **Run running phase**: `TitleBar("Running <id> — <name>")`, `SpinnerLine` for attempts, optional `ResumeChip`, `Flash`, `ViewportCard` for logs, `Modal` for kill confirm, `HelpBar` for scroll/quit/copy hints.
 - **Run result phase**: `TitleBar("Run result — <id>")`, badge + exit summary line, `BulletList` for remaining tasks, `ResumeChip`, `Flash`, `ViewportCard` for logs, `HelpBar` for navigation.
 - **Status pane**: `TitleBar("Status overview — <Table|Graph>")`, `SummaryBar`, focus/info line styled as Hint, switchable `TableView`/`GraphView` inside a `ViewportCard`, `HelpBar` with tab/f/enter/r/q bindings.
-- **Breakdown/spec split**: Intro uses `PageShell` with text body. Input uses `Textarea` + plan note + error via Flash + HelpBar. Running uses `SpinnerLine`, `ResumeChip`, `ViewportCard` logs, `Flash`, `HelpBar`. Done success uses `TitleBar`, `SummaryTable`, `BulletList` for warnings, `ResumeChip`, `ViewportCard` log tail, `HelpBar`. Error case uses same components with danger Flash.
+- **Breakdown/spec split**:
+  - Intro uses `PageShell` with text body.
+  - **Input** uses an **external editor flow cloned from Glow** (`references/glow/ui/editor.go`):
+    - Key `e` (and prompt when pressing Enter with empty content) opens `$EDITOR` on a temp file preloaded with the current draft (or blank). Use a Tea cmd wrapper (`openEditor`) to launch `github.com/charmbracelet/x/editor` with a friendly title, return `editorFinishedMsg`, and read the edited file back into the draft.
+    - The in-TUI view shows only a compact preview box (first ~10 lines) in a `ViewportCard`, plus errors via Flash and a HelpBar with `e edit`, `enter split`, `q quit`, `esc back`.
+    - Enter starts the split only if `draft` is non-empty; Shift/Alt/Ctrl+Enter insert newlines by delegating to the editor (not the TUI widget).
+  - **Running** uses `SpinnerLine`, `ResumeChip`, `ViewportCard` logs, `Flash`, and **Modal-based double-press esc/q confirmation** identical to Run: first press sets a 2s window; second press of the same key stops Codex (`esc`) or quits Helm (`q`). Help shows `esc×2 stop split`, `q×2 quit`.
+  - **Done (success/error)** uses `TitleBar`, `SummaryTable`, `BulletList` for warnings, `ResumeChip`, `ViewportCard` log tail, `HelpBar`. Error case uses danger Flash. No textarea remnants remain.
 - **Scaffold wizard**: Each step wrapped in `PageShell`. Intro/Confirm/Complete use text + BulletList. Mode picker uses `MenuList`. Commands step uses TextInput plus BulletList of existing commands and shared HelpBar. Options step uses FormField for specs root + inline error via Flash. Running step uses SpinnerLine. Complete step uses BulletList for created/skipped items.
 - **Settings**: `PageShell` with stacked `FormField` rows (Specs root input, Mode toggle, Default attempts input, Acceptance commands input, model/reasoning pairs, Save). HelpBar explains navigation; Flash for validation errors.
 

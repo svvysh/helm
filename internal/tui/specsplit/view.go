@@ -5,30 +5,54 @@ import (
 	"strings"
 
 	splitting "github.com/polarzero/helm/internal/specsplit"
+	"github.com/polarzero/helm/internal/tui/components"
 )
 
 func introView() string {
-	return strings.Join([]string{
-		"helm spec — split large specs",
-		"",
+	body := strings.Join([]string{
 		"This command collects a large spec (paste or file) and streams Codex progress while it generates smaller Helm specs.",
 		"",
-		"Keys: Enter begin, q/Esc quit.",
-	}, "\n") + "\n"
+		"Paste a spec on the next screen to get started.",
+	}, "\n")
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "begin"},
+		{Key: "q/esc", Label: "quit"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Title:       components.TitleConfig{Title: "helm spec — split large specs"},
+		Body:        body,
+		HelpEntries: help,
+	})
 }
 
 func inputView(m *model) string {
 	lines := []string{
-		"Paste the full spec below. Enter = split, Ctrl+O = load file (path in box), Ctrl+L = clear, q/Esc = quit.",
+		"Press e to open your editor and paste the large spec. Enter will start splitting once the draft is non-empty.",
 	}
 	if m.opts.PlanPath != "" {
 		lines = append(lines, fmt.Sprintf("Dev mode: plan will be loaded from %s", m.opts.PlanPath))
 	}
 	if m.inputErr != "" {
-		lines = append(lines, "", fmt.Sprintf("Error: %s", m.inputErr))
+		lines = append(lines, components.Flash(components.FlashDanger, fmt.Sprintf("Error: %s", m.inputErr)))
 	}
-	lines = append(lines, "", m.ta.View())
-	return strings.Join(lines, "\n") + "\n"
+	body, status := previewDraft(m.draft)
+	lines = append(lines, "", components.ViewportCard(components.ViewportCardOptions{
+		Width:   m.width,
+		Content: body,
+		Status:  status,
+	}))
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "split"},
+		{Key: "e", Label: "edit in $EDITOR"},
+		{Key: "q", Label: "quit"},
+		{Key: "esc", Label: "back"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: "Provide the large spec"},
+		Body:        strings.Join(lines, "\n"),
+		HelpEntries: help,
+	})
 }
 
 func runningView(m *model) string {
@@ -37,87 +61,129 @@ func runningView(m *model) string {
 		status = fmt.Sprintf("Reading plan from %s...", m.opts.PlanPath)
 	}
 	lines := []string{
-		fmt.Sprintf("%s %s", m.spinner.View(), status),
+		components.SpinnerLine(m.spinner.View(), status),
 	}
-	if m.resumeCmd != "" {
-		lines = append(lines, fmt.Sprintf("Resume: %s  [c] copy", m.resumeCmd))
+	if chip := components.ResumeChip(m.resumeCmd); chip != "" {
+		lines = append(lines, chip)
 	}
 	if m.flash != "" {
-		lines = append(lines, m.flash)
+		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 	}
-	lines = append(lines, "", m.vp.View())
-	return strings.Join(lines, "\n")
+	lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
+		Width:   m.width,
+		Content: m.vp.View(),
+		Status:  "PgUp/PgDn to scroll logs",
+	}))
+	if m.confirmKill {
+		lines = append(lines, components.Modal(components.ModalConfig{
+			Width: m.width,
+			Title: "Stop the current split?",
+			Body: []string{
+				"Codex will be terminated.",
+				"Press ESC again within 2s to stop; press Q twice to quit Helm.",
+			},
+		}))
+	}
+	help := []components.HelpEntry{
+		{Key: "PgUp/PgDn", Label: "scroll logs"},
+		{Key: "c", Label: "copy resume"},
+		{Key: "esc×2", Label: "stop split"},
+		{Key: "q×2", Label: "quit helm"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: "Splitting spec"},
+		Body:        strings.Join(lines, "\n\n"),
+		HelpEntries: help,
+	})
 }
 
 func doneView(m *model) string {
 	if m.err != nil {
 		lines := []string{
-			"Split failed:",
-			m.err.Error(),
+			components.Flash(components.FlashDanger, fmt.Sprintf("Split failed: %v", m.err)),
 		}
-		if m.resumeCmd != "" {
-			lines = append(lines, fmt.Sprintf("Resume: %s  [c] copy", m.resumeCmd))
+		if chip := components.ResumeChip(m.resumeCmd); chip != "" {
+			lines = append(lines, chip)
 		}
 		if m.flash != "" {
-			lines = append(lines, m.flash)
+			lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 		}
 		if len(m.logs) > 0 {
-			lines = append(lines, "", "Recent logs:")
-			lines = append(lines, renderLogTail(m.logs, 15))
+			lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
+				Width:   m.width,
+				Content: renderLogTail(m.logs, 15),
+				Status:  "Recent logs",
+			}))
 		}
-		lines = append(lines, "", "Press Enter/q/Esc to exit, n to split another, r to jump to Run.")
-		return strings.Join(lines, "\n") + "\n"
+		help := []components.HelpEntry{
+			{Key: "enter/q/esc", Label: "exit"},
+			{Key: "n", Label: "split another"},
+			{Key: "r", Label: "jump to Run"},
+		}
+		return components.PageShell(components.PageShellOptions{
+			Width:       m.width,
+			Title:       components.TitleConfig{Title: "Split failed"},
+			Body:        strings.Join(lines, "\n\n"),
+			HelpEntries: help,
+		})
 	}
 	if m.result == nil {
-		return "No specs were created. Press Enter/q/Esc to exit.\n"
+		help := []components.HelpEntry{
+			{Key: "enter/q/esc", Label: "exit"},
+		}
+		return components.PageShell(components.PageShellOptions{
+			Width:       m.width,
+			Title:       components.TitleConfig{Title: "No specs were created."},
+			Body:        "Press Enter/q/Esc to exit.",
+			HelpEntries: help,
+		})
 	}
 
 	lines := []string{
-		"Spec split complete!",
-		"",
 		renderSummaryTable(m.result.Specs),
 	}
 	if m.resumeCmd != "" {
-		lines = append(lines, fmt.Sprintf("Resume: %s  [c] copy", m.resumeCmd))
+		lines = append(lines, components.ResumeChip(m.resumeCmd))
 	}
 	if m.flash != "" {
-		lines = append(lines, m.flash)
+		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 	}
 	if len(m.result.Warnings) > 0 {
-		lines = append(lines, "", "Warnings:")
-		for _, warn := range m.result.Warnings {
-			lines = append(lines, fmt.Sprintf("- %s", warn))
-		}
+		lines = append(lines, components.BulletList(m.result.Warnings))
 	}
 	if len(m.logs) > 0 {
-		lines = append(lines, "", "Recent logs:", renderLogTail(m.logs, 15))
+		lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
+			Width:   m.width,
+			Content: renderLogTail(m.logs, 15),
+			Status:  "Recent logs",
+		}))
 	}
-	lines = append(lines, "", "Keys: Enter/q/Esc exit, r jump to Run, n split another.")
-	return strings.Join(lines, "\n") + "\n"
+	help := []components.HelpEntry{
+		{Key: "enter/q/esc", Label: "exit"},
+		{Key: "r", Label: "jump to Run"},
+		{Key: "n", Label: "split another"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: "Spec split complete!"},
+		Body:        strings.Join(lines, "\n\n"),
+		HelpEntries: help,
+	})
 }
 
 func renderSummaryTable(specs []splitting.GeneratedSpec) string {
 	if len(specs) == 0 {
 		return "(no specs created)"
 	}
-	idWidth := len("Spec ID")
-	nameWidth := len("Name")
+	rows := make([][]string, 0, len(specs))
 	for _, spec := range specs {
-		if l := len(spec.ID); l > idWidth {
-			idWidth = l
-		}
-		if l := len(spec.Name); l > nameWidth {
-			nameWidth = l
-		}
+		rows = append(rows, []string{spec.ID, spec.Name, strings.Join(spec.DependsOn, ", ")})
 	}
-	header := fmt.Sprintf("%-*s  %-*s  %s", idWidth, "Spec ID", nameWidth, "Name", "Depends on")
-	divider := strings.Repeat("-", len(header))
-	rows := []string{header, divider}
-	for _, spec := range specs {
-		deps := strings.Join(spec.DependsOn, ", ")
-		rows = append(rows, fmt.Sprintf("%-*s  %-*s  %s", idWidth, spec.ID, nameWidth, spec.Name, deps))
-	}
-	return strings.Join(rows, "\n")
+	return components.SummaryTable(components.SummaryTableData{
+		Headers: []string{"Spec ID", "Name", "Depends on"},
+		Rows:    rows,
+	})
 }
 
 func renderLogTail(lines []string, max int) string {
@@ -128,4 +194,20 @@ func renderLogTail(lines []string, max int) string {
 		lines = lines[len(lines)-max:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+func previewDraft(draft string) (string, string) {
+	if strings.TrimSpace(draft) == "" {
+		return "(draft is empty — press e to open your editor)", "Preview"
+	}
+	lines := strings.Split(draft, "\n")
+	total := len(lines)
+	limit := min(total, 10)
+	visible := min(limit, 5)
+	content := lines[:visible]
+	if limit > visible {
+		content = append(content, "…")
+	}
+	status := fmt.Sprintf("Preview: first %d lines (showing %d of %d)", limit, visible, total)
+	return strings.Join(content, "\n"), status
 }

@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/polarzero/helm/internal/specs"
+	"github.com/polarzero/helm/internal/tui/components"
 	"github.com/polarzero/helm/internal/tui/theme"
 )
 
@@ -88,14 +89,17 @@ func renderSpecItem(folder *specs.SpecFolder, selected bool) string {
 		return ""
 	}
 	badgeText, badgeStyle, _ := theme.StatusBadge(folder.Metadata, len(folder.UnmetDeps) > 0)
-	header := fmt.Sprintf("%s %s — %s", badgeStyle.Render(badgeText), folder.Metadata.ID, folder.Metadata.Name)
-	if selected {
-		header = theme.SelectedStyle.Render(header)
+	vm := components.SpecListItemViewModel{
+		BadgeText:  badgeText,
+		BadgeStyle: badgeStyle,
+		ID:         folder.Metadata.ID,
+		Name:       folder.Metadata.Name,
+		Summary:    dependencySummary(folder),
+		LastRun:    lastRunSummary(folder),
+		Selected:   selected,
+		Warning:    len(folder.UnmetDeps) > 0,
 	}
-	dep := dependencySummary(folder)
-	last := lastRunSummary(folder)
-	lines := []string{header, theme.HintStyle.Render(dep), theme.HintStyle.Render(last)}
-	return strings.Join(lines, "\n")
+	return components.SpecListItem(vm)
 }
 
 func dependencySummary(folder *specs.SpecFolder) string {
@@ -124,25 +128,49 @@ func lastRunSummary(folder *specs.SpecFolder) string {
 }
 
 func (m *model) listView() string {
-	var b strings.Builder
-	b.WriteString(m.list.View())
-	b.WriteString("\n\n")
-	filterLabel := "All specs"
+	body := []string{m.list.View()}
+	filterLabel := "all specs"
 	if m.filterRunnable {
-		filterLabel = "Runnable only"
+		filterLabel = "runnable only"
 	}
-	b.WriteString(theme.HintStyle.Render(fmt.Sprintf("[↑/↓] move  [enter] run  [f] filter: %s  [q] quit", filterLabel)))
 	if m.confirmUnmet {
-		deps := "none"
+		deps := "None"
 		if item := m.currentItem(); item != nil {
 			if len(item.folder.UnmetDeps) > 0 {
 				deps = strings.Join(item.folder.UnmetDeps, ", ")
 			}
 		}
-		b.WriteString("\n\n")
-		b.WriteString(theme.WarningStyle.Render(fmt.Sprintf("This spec has unmet dependencies: %s. Run anyway? [y/N]", deps)))
+		modal := components.Modal(components.ModalConfig{
+			Width: m.width,
+			Title: "Run with unmet dependencies?",
+			Body: []string{
+				fmt.Sprintf("Unmet deps: %s", deps),
+				"Press y to run anyway or n/esc to cancel.",
+			},
+		})
+		body = append(body, modal)
 	}
-	return b.String()
+	if m.flash != "" {
+		body = append(body, components.Flash(components.FlashInfo, m.flash))
+	}
+	help := []components.HelpEntry{
+		{Key: "↑/↓", Label: "move"},
+		{Key: "enter", Label: "run"},
+		{Key: "f", Label: fmt.Sprintf("filter (%s)", filterLabel)},
+		{Key: "q", Label: "quit"},
+	}
+	if m.confirmUnmet {
+		help = append(help,
+			components.HelpEntry{Key: "y", Label: "confirm"},
+			components.HelpEntry{Key: "n/esc", Label: "cancel"},
+		)
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: "helm run"},
+		Body:        strings.Join(body, "\n\n"),
+		HelpEntries: help,
+	})
 }
 
 func (m *model) runningView() string {
@@ -150,40 +178,56 @@ func (m *model) runningView() string {
 		return "Starting run..."
 	}
 	spec := m.running.spec.Metadata
-	title := theme.TitleStyle.Render(fmt.Sprintf("Running %s — %s", spec.ID, spec.Name))
 	attemptLine := "Waiting for attempts to start"
 	if m.running.attempt > 0 && m.running.totalAttempts > 0 {
 		attemptLine = fmt.Sprintf("Attempt %d of %d", m.running.attempt, m.running.totalAttempts)
 	}
-	resumeLine := ""
-	if m.running.resumeCmd != "" {
-		resumeLine = theme.HintStyle.Render(fmt.Sprintf("Resume: %s  [c] copy", m.running.resumeCmd))
+	sections := []string{
+		components.SpinnerLine(m.spinner.View(), attemptLine),
 	}
-	lines := []string{
-		title,
-		theme.HintStyle.Render(attemptLine + "  •  Press q to stop, PgUp/PgDn to scroll"),
-	}
-	if resumeLine != "" {
-		lines = append(lines, resumeLine)
+	if chip := components.ResumeChip(m.running.resumeCmd); chip != "" {
+		sections = append(sections, chip)
 	}
 	if m.flash != "" {
-		lines = append(lines, theme.HintStyle.Render(m.flash))
+		sections = append(sections, components.Flash(components.FlashInfo, m.flash))
 	}
-	lines = append(lines, "", m.viewport.View())
+	viewport := components.ViewportCard(components.ViewportCardOptions{
+		Width:   m.width,
+		Content: m.viewport.View(),
+		Status:  "PgUp/PgDn to scroll logs",
+	})
+	sections = append(sections, viewport)
 	if m.confirmKill {
-		lines = append(lines, "", theme.WarningStyle.Render("Stop this run and terminate implement-spec? [y/N]"))
+		sections = append(sections, components.Modal(components.ModalConfig{
+			Width: m.width,
+			Title: "Stop the current run?",
+			Body: []string{
+				"implement-spec will be terminated.",
+				"Press ESC again within 2s to stop; press Q twice to quit Helm.",
+			},
+		}))
 	}
-	return strings.Join(lines, "\n")
+	help := []components.HelpEntry{
+		{Key: "PgUp/PgDn", Label: "scroll"},
+		{Key: "c", Label: "copy resume"},
+		{Key: "esc×2", Label: "stop run"},
+		{Key: "q×2", Label: "quit"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: fmt.Sprintf("Running %s — %s", spec.ID, spec.Name)},
+		Body:        strings.Join(sections, "\n\n"),
+		HelpEntries: help,
+	})
 }
 
 func (m *model) resultView() string {
 	if m.result == nil {
 		return "Run complete"
 	}
-	title := theme.TitleStyle.Render(fmt.Sprintf("Run result — %s", m.result.specID))
-	lines := []string{title}
+	lines := []string{}
 	if m.result.err != nil {
-		lines = append(lines, theme.WarningStyle.Render(fmt.Sprintf("Error: %v", m.result.err)))
+		lines = append(lines, components.Flash(components.FlashDanger, fmt.Sprintf("Error: %v", m.result.err)))
 	} else {
 		statusLabel := strings.ToUpper(string(m.result.status))
 		if statusLabel == "" {
@@ -191,23 +235,35 @@ func (m *model) resultView() string {
 		}
 		lines = append(lines, fmt.Sprintf("Spec status: %s", statusLabel))
 		if m.result.exitErr != nil {
-			lines = append(lines, theme.WarningStyle.Render(fmt.Sprintf("implement-spec exited with code %d: %v", m.result.exitCode, m.result.exitErr)))
+			lines = append(lines, components.Flash(components.FlashDanger, fmt.Sprintf("implement-spec exited with code %d: %v", m.result.exitCode, m.result.exitErr)))
 		} else {
-			lines = append(lines, theme.HintStyle.Render("implement-spec exited successfully."))
+			lines = append(lines, components.Flash(components.FlashSuccess, "implement-spec exited successfully."))
 		}
 	}
 	if len(m.result.remaining) > 0 {
-		lines = append(lines, "", "Remaining tasks:")
-		for _, task := range m.result.remaining {
-			lines = append(lines, fmt.Sprintf("- %s", task))
-		}
+		lines = append(lines, components.BulletList(m.result.remaining))
 	}
-	if m.result.resumeCmd != "" {
-		lines = append(lines, "", theme.HintStyle.Render(fmt.Sprintf("Resume: %s  [c] copy", m.result.resumeCmd)))
+	if chip := components.ResumeChip(m.result.resumeCmd); chip != "" {
+		lines = append(lines, chip)
 	}
 	if m.flash != "" {
-		lines = append(lines, theme.HintStyle.Render(m.flash))
+		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 	}
-	lines = append(lines, "", theme.HintStyle.Render("Press enter/r to return to list, q to quit."), "", m.viewport.View())
-	return strings.Join(lines, "\n")
+	viewport := components.ViewportCard(components.ViewportCardOptions{
+		Width:   m.width,
+		Content: m.viewport.View(),
+		Status:  "PgUp/PgDn scroll — enter to return",
+	})
+	lines = append(lines, viewport)
+	help := []components.HelpEntry{
+		{Key: "enter/r", Label: "back to list"},
+		{Key: "c", Label: "copy resume"},
+		{Key: "q", Label: "quit"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       m.width,
+		Title:       components.TitleConfig{Title: fmt.Sprintf("Run result — %s", m.result.specID)},
+		Body:        strings.Join(lines, "\n\n"),
+		HelpEntries: help,
+	})
 }

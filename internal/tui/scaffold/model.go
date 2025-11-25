@@ -10,6 +10,7 @@ import (
 
 	"github.com/polarzero/helm/internal/config"
 	innerscaffold "github.com/polarzero/helm/internal/scaffold"
+	"github.com/polarzero/helm/internal/tui/components"
 )
 
 // ErrCanceled is returned when the user aborts the scaffold flow.
@@ -24,7 +25,7 @@ type Options struct {
 // Run launches the scaffold TUI and returns the resulting workspace summary.
 func Run(opts Options) (*innerscaffold.Result, error) {
 	initial := newModel(opts)
-	prog := tea.NewProgram(initial)
+	prog := tea.NewProgram(initial, tea.WithAltScreen())
 	finalModel, err := prog.Run()
 	if err != nil {
 		return nil, err
@@ -86,11 +87,11 @@ func newModel(opts Options) *model {
 			break
 		}
 	}
-	m.commandInput = textinput.New()
+	m.commandInput = components.NewTextInput()
 	m.commandInput.Placeholder = "e.g. go test ./..."
 	m.commandInput.Prompt = "↪ "
 	m.commandInput.Focus()
-	m.specsRoot = textinput.New()
+	m.specsRoot = components.NewTextInput()
 	root := defaults.SpecsRoot
 	if root == "" {
 		root = config.DefaultSpecsRoot()
@@ -98,8 +99,7 @@ func newModel(opts Options) *model {
 	m.specsRoot.SetValue(root)
 	m.specsRoot.Placeholder = config.DefaultSpecsRoot()
 	m.specsRoot.Prompt = "↪ "
-	m.spinner = spinner.New()
-	m.spinner.Spinner = spinner.Dot
+	m.spinner = components.NewSpinner()
 	return m
 }
 
@@ -339,19 +339,19 @@ func (m *model) View() string {
 	}
 	switch m.step {
 	case stepIntro:
-		return introView()
+		return introView(m.width)
 	case stepMode:
-		return modeView(m.modeChoices, m.modeIndex)
+		return modeView(m.width, m.modeChoices, m.modeIndex)
 	case stepCommands:
-		return commandsView(m.commands, m.commandInput.View())
+		return commandsView(m.width, m.commands, m.commandInput.View())
 	case stepOptions:
-		return optionsView(m.specsRoot.View(), m.focusIndex, m.optionsErr)
+		return optionsView(m.width, m.specsRoot.View(), m.focusIndex, m.optionsErr)
 	case stepConfirm:
-		return confirmView(m.answers())
+		return confirmView(m.width, m.answers())
 	case stepRunning:
-		return runningView(m.spinner.View())
+		return runningView(m.width, m.spinner.View())
 	case stepComplete:
-		return completeView(m.result, m.err)
+		return completeView(m.width, m.result, m.err)
 	default:
 		return ""
 	}

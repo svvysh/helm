@@ -14,8 +14,12 @@ import (
 
 	"github.com/polarzero/helm/internal/metadata"
 	"github.com/polarzero/helm/internal/specs"
+	"github.com/polarzero/helm/internal/tui/components"
 	"github.com/polarzero/helm/internal/tui/theme"
 )
+
+// ErrQuitAll signals the caller to quit the entire CLI.
+var ErrQuitAll = errors.New("status quit")
 
 // Options configure the status TUI.
 type Options struct {
@@ -128,7 +132,7 @@ func newModel(opts Options, folders []*specs.SpecFolder) *model {
 		table.WithColumns(defaultColumns()),
 		table.WithFocused(true),
 	)
-	tbl.SetStyles(tableStyles())
+	tbl.SetStyles(components.TableStyles())
 
 	vp := viewport.New(0, 0)
 
@@ -265,21 +269,6 @@ func defaultColumns() []table.Column {
 	}
 }
 
-func tableStyles() table.Styles {
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderBottom(true).
-		Bold(true).
-		Padding(0, 1)
-	s.Cell = s.Cell.Padding(0, 1)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(true)
-	return s
-}
-
 func cloneStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
@@ -300,7 +289,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c", "esc":
+			return m, tea.Quit
+		case "q":
+			m.err = ErrQuitAll
 			return m, tea.Quit
 		case "tab", "shift+tab":
 			m.toggleView()

@@ -4,120 +4,165 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/polarzero/helm/internal/config"
 	innerscaffold "github.com/polarzero/helm/internal/scaffold"
+	"github.com/polarzero/helm/internal/tui/components"
 )
 
-var (
-	titleStyle    = lipgloss.NewStyle().Bold(true)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	inputLabel    = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-)
-
-func introView() string {
-	lines := []string{
-		titleStyle.Render("helm scaffold"),
-		"",
-		"This flow will create specs/ with prompt templates, settings, the runner script,",
+func introView(width int) string {
+	body := strings.Join([]string{
+		"This flow creates specs/ with prompt templates, settings, the runner script,",
 		"and a sample spec so you can start executing specs immediately.",
 		"",
 		"Press Enter to get started, Esc to go back/quit, q to quit.",
+	}, "\n")
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "continue"},
+		{Key: "esc/q", Label: "quit"},
 	}
-	return strings.Join(lines, "\n")
+	return components.PageShell(components.PageShellOptions{
+		Width:       width,
+		Title:       components.TitleConfig{Title: "helm scaffold"},
+		Body:        body,
+		HelpEntries: help,
+	})
 }
 
-func modeView(modes []config.Mode, index int) string {
-	lines := []string{
-		titleStyle.Render("Select workflow mode"),
-		"",
-		"Strict runs acceptance commands sequentially; Parallel may fan out where safe.",
-		"",
-	}
+func modeView(width int, modes []config.Mode, index int) string {
+	items := make([]components.MenuItem, len(modes))
 	for i, mode := range modes {
-		text := string(mode)
-		label := fmt.Sprintf("  %s", text)
-		if i == index {
-			label = selectedStyle.Render("▶ " + text)
+		desc := "Strict runs acceptance commands sequentially."
+		if mode == config.ModeParallel {
+			desc = "Parallel may fan out acceptance commands when safe."
 		}
-		lines = append(lines, label)
+		items[i] = components.MenuItem{Title: string(mode), Description: desc}
 	}
-	lines = append(lines, "", "Use ↑/↓ or tab to move, Enter to confirm, Esc to go back, q to quit.")
-	return strings.Join(lines, "\n")
+	list := components.MenuList(width, items, index)
+	help := []components.HelpEntry{
+		{Key: "↑/↓/tab", Label: "move"},
+		{Key: "enter", Label: "select"},
+		{Key: "esc", Label: "back"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width: width,
+		Title: components.TitleConfig{Title: "Select workflow mode"},
+		Body: strings.Join([]string{
+			"Strict runs acceptance commands sequentially; Parallel may fan out where safe.",
+			"",
+			list,
+		}, "\n"),
+		HelpEntries: help,
+	})
 }
 
-func commandsView(existing []string, input string) string {
-	lines := []string{titleStyle.Render("Acceptance commands"), ""}
-	if len(existing) == 0 {
-		lines = append(lines, "(none yet)")
-	} else {
-		for _, cmd := range existing {
-			lines = append(lines, fmt.Sprintf("- %s", cmd))
-		}
+func commandsView(width int, existing []string, input string) string {
+	summary := "(none yet)"
+	if len(existing) > 0 {
+		summary = components.BulletList(existing)
 	}
-	lines = append(lines, "", inputLabel.Render("Enter command (blank + Enter to continue, ctrl+w to remove last; Esc back, q quit):"), input)
-	return strings.Join(lines, "\n")
+	field := components.FormFieldView(components.FormField{
+		Label:       "Enter acceptance command (blank + Enter to continue, ctrl+w remove last)",
+		Value:       input,
+		Description: "Commands run sequentially during strict mode.",
+		Focused:     true,
+	})
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "add"},
+		{Key: "ctrl+w", Label: "remove last"},
+		{Key: "esc", Label: "back"},
+	}
+	body := strings.Join([]string{
+		"Existing commands:",
+		summary,
+		"",
+		field,
+	}, "\n")
+	return components.PageShell(components.PageShellOptions{
+		Width:       width,
+		Title:       components.TitleConfig{Title: "Acceptance commands"},
+		Body:        body,
+		HelpEntries: help,
+	})
 }
 
-func optionsView(specsInput string, focus int, errMsg string) string {
-	rootLabel := "Specs root (editable)"
-	if focus == 0 {
-		rootLabel = selectedStyle.Render(rootLabel + " — type to edit, Enter to continue")
+func optionsView(width int, specsInput string, focus int, errMsg string) string {
+	field := components.FormFieldView(components.FormField{
+		Label:       "Specs root",
+		Value:       specsInput,
+		Description: "Type to edit, Enter to continue",
+		Focused:     focus == 0,
+		Error:       errMsg,
+	})
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "continue"},
+		{Key: "esc", Label: "back"},
 	}
-	lines := []string{titleStyle.Render("Optional settings"), "", fmt.Sprintf("%s:", rootLabel), specsInput}
-	if errMsg != "" {
-		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(errMsg))
-	}
-	lines = append(lines, "", "Use Enter to continue, Esc back, q quit.")
-	return strings.Join(lines, "\n")
+	return components.PageShell(components.PageShellOptions{
+		Width:       width,
+		Title:       components.TitleConfig{Title: "Optional settings"},
+		Body:        field,
+		HelpEntries: help,
+	})
 }
 
-func confirmView(answers innerscaffold.Answers) string {
-	lines := []string{titleStyle.Render("Confirm scaffold"), ""}
-	lines = append(lines, fmt.Sprintf("Mode: %s", answers.Mode))
-	lines = append(lines, fmt.Sprintf("Specs root: %s", answers.SpecsRoot))
+func confirmView(width int, answers innerscaffold.Answers) string {
+	lines := []string{
+		fmt.Sprintf("Mode: %s", answers.Mode),
+		fmt.Sprintf("Specs root: %s", answers.SpecsRoot),
+	}
 	if len(answers.AcceptanceCommands) == 0 {
 		lines = append(lines, "Acceptance commands: (none)")
 	} else {
-		lines = append(lines, "Acceptance commands:")
-		for _, cmd := range answers.AcceptanceCommands {
-			lines = append(lines, fmt.Sprintf("- %s", cmd))
-		}
+		lines = append(lines, "Acceptance commands:", components.BulletList(answers.AcceptanceCommands))
 	}
-	lines = append(lines, "", "Press Enter to scaffold, Esc to go back, q to quit.")
-	return strings.Join(lines, "\n")
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "scaffold"},
+		{Key: "esc", Label: "back"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       width,
+		Title:       components.TitleConfig{Title: "Confirm scaffold"},
+		Body:        strings.Join(lines, "\n\n"),
+		HelpEntries: help,
+	})
 }
 
-func runningView(spin string) string {
-	return fmt.Sprintf("%s Creating workspace... (Esc/q to cancel)", spin)
+func runningView(width int, spin string) string {
+	body := components.SpinnerLine(spin, "Creating workspace... (Esc/q to cancel)")
+	help := []components.HelpEntry{
+		{Key: "esc/q", Label: "cancel"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       width,
+		Title:       components.TitleConfig{Title: "Scaffolding"},
+		Body:        body,
+		HelpEntries: help,
+	})
 }
 
-func completeView(result *innerscaffold.Result, err error) string {
+func completeView(width int, result *innerscaffold.Result, err error) string {
+	var body []string
 	if err != nil {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(fmt.Sprintf("Scaffold failed: %v", err))
-	}
-	if result == nil {
-		return "Scaffold finished."
-	}
-	lines := []string{
-		titleStyle.Render("Scaffold complete"), "",
-		fmt.Sprintf("Specs root: %s", result.SpecsRoot), "",
-	}
-	if len(result.Created) > 0 {
-		lines = append(lines, "Created:")
-		for _, path := range result.Created {
-			lines = append(lines, fmt.Sprintf("- %s", path))
+		body = append(body, components.Flash(components.FlashDanger, fmt.Sprintf("Scaffold failed: %v", err)))
+	} else if result != nil {
+		body = append(body, fmt.Sprintf("Specs root: %s", result.SpecsRoot))
+		if len(result.Created) > 0 {
+			body = append(body, "Created:", components.BulletList(result.Created))
 		}
-		lines = append(lines, "")
-	}
-	if len(result.Skipped) > 0 {
-		lines = append(lines, "Skipped (already existed):")
-		for _, path := range result.Skipped {
-			lines = append(lines, fmt.Sprintf("- %s", path))
+		if len(result.Skipped) > 0 {
+			body = append(body, "Skipped (already existed):", components.BulletList(result.Skipped))
 		}
-		lines = append(lines, "")
+	} else {
+		body = append(body, "Scaffold finished.")
 	}
-	lines = append(lines, "Press Enter to exit, q to quit.")
-	return strings.Join(lines, "\n")
+	help := []components.HelpEntry{
+		{Key: "enter", Label: "exit"},
+		{Key: "q", Label: "quit"},
+	}
+	return components.PageShell(components.PageShellOptions{
+		Width:       width,
+		Title:       components.TitleConfig{Title: "Scaffold complete"},
+		Body:        strings.Join(body, "\n\n"),
+		HelpEntries: help,
+	})
 }
