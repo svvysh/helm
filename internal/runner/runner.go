@@ -154,6 +154,8 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 			return fmt.Errorf("encode remaining tasks: %w", err)
 		}
 
+		fmt.Fprintf(stdout, "Stage: implementing (attempt %d of %d)\n", attempt, maxAttempts)
+
 		workerPrompt := fillTemplate(spec.ImplementTemplate, map[string]string{
 			"{{SPEC_ID}}":                  spec.ID,
 			"{{SPEC_NAME}}":                spec.Name,
@@ -167,6 +169,8 @@ func (r *Runner) Run(ctx context.Context, specArg string) error {
 		if err != nil {
 			return fmt.Errorf("worker execution failed: %w", err)
 		}
+
+		fmt.Fprintf(stdout, "Stage: verifying (attempt %d of %d)\n", attempt, maxAttempts)
 
 		reviewPrompt := fillTemplate(spec.ReviewTemplate, map[string]string{
 			"{{SPEC_ID}}":               spec.ID,

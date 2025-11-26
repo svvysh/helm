@@ -58,6 +58,7 @@ type model struct {
 	canceled  bool
 	hasChosen bool
 	width     int
+	height    int
 }
 
 var items = []struct {
@@ -76,8 +77,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		return m, nil
+		m.height = msg.Height
+		return m, tea.ClearScreen
 	case tea.KeyMsg:
+		var cmd tea.Cmd
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.canceled = true
@@ -88,16 +91,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				cmd = tea.ClearScreen
 			}
 		case "down", "j":
 			if m.cursor < len(items)-1 {
 				m.cursor++
+				cmd = tea.ClearScreen
 			}
 		case "enter":
 			m.selection = items[m.cursor].sel
 			m.hasChosen = true
 			return m, tea.Quit
 		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -113,10 +119,11 @@ func (m *model) View() string {
 		{Key: "enter", Label: "select"},
 		{Key: "q", Label: "quit"},
 	}
-	return components.PageShell(components.PageShellOptions{
+	view := components.PageShell(components.PageShellOptions{
 		Width:       m.width,
 		Title:       components.TitleConfig{Title: "Helm — choose an action"},
 		Body:        body,
 		HelpEntries: help,
 	})
+	return components.PadToHeight(view, m.height)
 }

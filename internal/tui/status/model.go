@@ -52,11 +52,6 @@ func Run(opts Options) error {
 
 type viewMode int
 
-const (
-	viewTable viewMode = iota
-	viewGraph
-)
-
 type focusMode int
 
 const (
@@ -71,7 +66,6 @@ type model struct {
 	table         table.Model
 	graphViewport viewport.Model
 
-	viewMode  viewMode
 	focusMode focusMode
 
 	focusTarget string
@@ -140,7 +134,6 @@ func newModel(opts Options, folders []*specs.SpecFolder) *model {
 		opts:          opts,
 		table:         tbl,
 		graphViewport: vp,
-		viewMode:      viewTable,
 		focusMode:     focusAll,
 		entries:       entries,
 		entryByID:     entryByID,
@@ -294,14 +287,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			m.err = ErrQuitAll
 			return m, tea.Quit
-		case "tab", "shift+tab":
-			m.toggleView()
-			return m, nil
 		case "f":
 			m.cycleFocus(m.currentSelectionID())
 			return m, nil
 		case "enter":
-			if m.viewMode == viewTable && m.setSubtreeFromSelection() {
+			if m.setSubtreeFromSelection() {
 				return m, nil
 			}
 		case "r":
@@ -310,14 +300,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.viewMode == viewTable {
-		var cmd tea.Cmd
-		m.table, cmd = m.table.Update(msg)
-		return m, cmd
-	}
+	var cmds []tea.Cmd
 	var cmd tea.Cmd
+	prevSel := m.currentSelectionID()
+	m.table, cmd = m.table.Update(msg)
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if newSel := m.currentSelectionID(); newSel != prevSel {
+		m.graphViewport.SetContent(strings.Join(buildGraphLines(m.visible, newSel), "\n"))
+	}
 	m.graphViewport, cmd = m.graphViewport.Update(msg)
-	return m, cmd
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func (m *model) resize() {
@@ -325,20 +322,18 @@ func (m *model) resize() {
 		return
 	}
 
-	contentHeight := m.height - 6
-	if contentHeight < 5 {
-		contentHeight = m.height - 3
-		if contentHeight < 3 {
-			contentHeight = 3
-		}
+	chrome := m.chromeHeight()
+	contentHeight := m.height - (theme.ViewTopPadding + theme.ViewBottomPadding) - chrome
+	if contentHeight < 3 {
+		contentHeight = max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
 	}
 
 	m.table.SetHeight(contentHeight)
 	m.graphViewport.Height = contentHeight
-	m.graphViewport.Width = max(20, m.width-2)
+	m.graphViewport.Width = max(20, contentWidth(m.width)-4) // allow for card border + padding
 
 	m.table.SetColumns(m.computeColumns())
-	m.graphViewport.SetContent(strings.Join(buildGraphLines(m.visible), "\n"))
+	m.graphViewport.SetContent(strings.Join(buildGraphLines(m.visible, m.currentSelectionID()), "\n"))
 }
 
 func (m *model) refreshVisible(preserve string) {
@@ -357,7 +352,7 @@ func (m *model) refreshVisible(preserve string) {
 	m.table.SetRows(rows)
 	m.selectRow(preserve)
 
-	content := buildGraphLines(m.visible)
+	content := buildGraphLines(m.visible, m.currentSelectionID())
 	m.graphViewport.SetContent(strings.Join(content, "\n"))
 	if len(content) == 0 {
 		m.graphViewport.SetContent("No specs discovered.")
@@ -420,14 +415,6 @@ func (m *model) selectRow(preserve string) {
 		}
 	}
 	m.table.SetCursor(0)
-}
-
-func (m *model) toggleView() {
-	if m.viewMode == viewTable {
-		m.viewMode = viewGraph
-	} else {
-		m.viewMode = viewTable
-	}
 }
 
 func (m *model) cycleFocus(preserve string) {
@@ -526,7 +513,7 @@ func (m *model) reloadData() {
 }
 
 func (m *model) computeColumns() []table.Column {
-	total := m.width - 4
+	total := contentWidth(m.width)
 	if total < 40 {
 		total = 40
 	}
@@ -564,9 +551,36 @@ func (m *model) View() string {
 	return renderView(m)
 }
 
+func (m *model) chromeHeight() int {
+	opts := m.pageShellOptions("")
+
+	title := components.TitleBar(opts.Title)
+	helpBar := components.HelpBar(contentWidth(m.width), opts.HelpEntries...)
+
+	sections := []string{}
+	if strings.TrimSpace(title) != "" {
+		sections = append(sections, title)
+	}
+	if strings.TrimSpace(opts.Body) != "" {
+		sections = append(sections, opts.Body)
+	}
+	if strings.TrimSpace(helpBar) != "" {
+		sections = append(sections, helpBar)
+	}
+	return lipgloss.Height(strings.Join(sections, "\n\n"))
+}
+
 func max(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
+}
+
+func contentWidth(width int) int {
+	w := width - theme.ViewHorizontalPadding*2
+	if w < 24 {
+		return 24
+	}
+	return w
 }

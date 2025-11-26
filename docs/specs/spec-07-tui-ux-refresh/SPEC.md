@@ -94,6 +94,13 @@ Keep data flow and hotkeys unchanged; swap rendering to the kit above.
 - Existing keybindings and behaviors continue to work (list navigation, filters, focus modes, resume copy, quit semantics).
 - `make all` succeeds.
 
+### Responsive sizing rules (required)
+- Every pane derives its layout from `tea.WindowSizeMsg`; no hard-coded heights or width magic numbers remain.
+- Available content height is computed by measuring the rendered chrome (title, flashes/modals, spinner/resume lines, status bars, help bar) with lipgloss, then subtracting chrome plus `theme.ViewTopPadding`/`theme.ViewBottomPadding` from the window height.
+- Lists, tables, and viewports resize to the available height (with sensible minimums) while keeping footers/help on-screen at any terminal size.
+- `PadToHeight` may be used only as a safeguard against repaint artifacts, never as the primary sizing mechanism.
+- All existing TUI components have been refactored to follow these responsive rules.
+
 ## Depends on
 - spec-00-foundation — module + CLI skeleton
 - spec-01-config-metadata — settings/metadata/discovery

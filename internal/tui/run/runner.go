@@ -85,7 +85,7 @@ func listenStream(ch <-chan tea.Msg) tea.Cmd {
 	}
 }
 
-var attemptRe = regexp.MustCompile(`Attempt\s+(\d+)\s+of\s+(\d+)`)
+var attemptRe = regexp.MustCompile(`(?i)attempt\s+(\d+)\s+of\s+(\d+)`)
 
 func parseAttemptLine(line string) (int, int, bool) {
 	matches := attemptRe.FindStringSubmatch(line)

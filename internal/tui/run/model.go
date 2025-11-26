@@ -3,8 +3,10 @@ package run
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,11 +15,13 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/polarzero/helm/internal/config"
 	"github.com/polarzero/helm/internal/metadata"
 	"github.com/polarzero/helm/internal/specs"
 	"github.com/polarzero/helm/internal/tui/components"
+	"github.com/polarzero/helm/internal/tui/theme"
 )
 
 // Options configures the run TUI.
@@ -34,7 +38,7 @@ func Run(opts Options) error {
 		return err
 	}
 
-	prog := tea.NewProgram(mdl, tea.WithAltScreen())
+	prog := tea.NewProgram(mdl, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	res, err := prog.Run()
 	if err != nil {
 		return err
@@ -124,7 +128,12 @@ func newModel(opts Options) (*model, error) {
 		specs:    folders,
 		viewport: vp,
 		logLimit: 2000,
+		width:    80,
+		height:   24,
 	}
+
+	m.viewport.MouseWheelEnabled = true
+	m.resize()
 	return m, nil
 }
 
@@ -147,7 +156,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resize()
-		return m, nil
+		return m, tea.ClearScreen
 	}
 
 	var cmd tea.Cmd
@@ -174,6 +183,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	needClear := false
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -199,6 +209,7 @@ func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.confirmUnmet {
 				m.confirmUnmet = false
 			}
+			needClear = true
 		case "enter":
 			if m.confirmUnmet {
 				return m, nil
@@ -236,6 +247,9 @@ func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	if needClear {
+		return m, tea.Batch(cmd, tea.ClearScreen)
+	}
 	return m, cmd
 }
 
@@ -370,16 +384,18 @@ func (m *model) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
+	var view string
 	switch m.phase {
 	case phaseList:
-		return m.listView()
+		view = m.listView()
 	case phaseRunning:
-		return m.runningView()
+		view = m.runningView()
 	case phaseResult:
-		return m.resultView()
+		view = m.resultView()
 	default:
-		return ""
+		view = ""
 	}
+	return components.PadToHeight(view, m.height)
 }
 
 func (m *model) resize() {
@@ -388,20 +404,216 @@ func (m *model) resize() {
 	}
 	switch m.phase {
 	case phaseList:
-		h := m.height - 2
-		if h < 3 {
-			h = m.height
+		chrome := m.listChromeHeight()
+		available := availableHeight(m.height, chrome)
+		if available < 3 {
+			available = max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
 		}
-		m.list.SetSize(m.width, h)
+		m.list.SetSize(contentWidth(m.width), available)
 	case phaseRunning, phaseResult:
-		header := 7
-		h := m.height - header
-		if h < 3 {
-			h = m.height
+		available := availableHeight(m.height, m.logsChromeHeight())
+		minHeight := max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
+		if available < 3 {
+			available = minHeight
 		}
-		m.viewport.Width = m.width
-		m.viewport.Height = h
+		m.viewport.Width = max(10, contentWidth(m.width)-4) // account for card border + padding
+		m.viewport.Height = available
 	}
+}
+
+// availableHeight derives the space left for scrollable content after chrome and padding.
+func availableHeight(windowHeight, chromeHeight int) int {
+	return windowHeight - (theme.ViewTopPadding + theme.ViewBottomPadding) - chromeHeight
+}
+
+// listChromeHeight measures all non-list chrome for the list phase at current width.
+func (m *model) listChromeHeight() int {
+	filterLabel := "all specs"
+	if m.filterRunnable {
+		filterLabel = "runnable only"
+	}
+
+	bodyParts := []string{""} // placeholder where the list content will render
+	if m.confirmUnmet {
+		deps := "None"
+		if item := m.currentItem(); item != nil {
+			if len(item.folder.UnmetDeps) > 0 {
+				deps = strings.Join(item.folder.UnmetDeps, ", ")
+			}
+		}
+		bodyParts = append(bodyParts, components.Modal(components.ModalConfig{
+			Width: m.width,
+			Title: "Run with unmet dependencies?",
+			Body: []string{
+				fmt.Sprintf("Unmet deps: %s", deps),
+				"Press y to run anyway or n/esc to cancel.",
+			},
+		}))
+	}
+	if m.flash != "" {
+		bodyParts = append(bodyParts, components.Flash(components.FlashInfo, m.flash))
+	}
+
+	help := []components.HelpEntry{
+		{Key: "↑/↓", Label: "move"},
+		{Key: "enter", Label: "run"},
+		{Key: "f", Label: fmt.Sprintf("filter (%s)", filterLabel)},
+		{Key: "q", Label: "quit"},
+	}
+	if m.confirmUnmet {
+		help = append(help,
+			components.HelpEntry{Key: "y", Label: "confirm"},
+			components.HelpEntry{Key: "n/esc", Label: "cancel"},
+		)
+	}
+
+	title := components.TitleBar(components.TitleConfig{Title: "helm run"})
+	body := strings.Join(bodyParts, "\n\n")
+	helpBar := components.HelpBar(contentWidth(m.width), help...)
+
+	sections := make([]string, 0, 3)
+	if strings.TrimSpace(title) != "" {
+		sections = append(sections, title)
+	}
+	if strings.TrimSpace(body) != "" {
+		sections = append(sections, body)
+	}
+	if strings.TrimSpace(helpBar) != "" {
+		sections = append(sections, helpBar)
+	}
+	return lipgloss.Height(strings.Join(sections, "\n\n"))
+}
+
+// logsChromeHeight measures chrome surrounding the log viewport for running/result phases.
+func (m *model) logsChromeHeight() int {
+	var sections []string
+
+	title := ""
+	switch m.phase {
+	case phaseRunning:
+		if m.running != nil && m.running.spec != nil && m.running.spec.Metadata != nil {
+			title = components.TitleBar(components.TitleConfig{
+				Title: fmt.Sprintf("Running %s — %s", m.running.spec.Metadata.ID, m.running.spec.Metadata.Name),
+			})
+		}
+	case phaseResult:
+		if m.result != nil {
+			title = components.TitleBar(components.TitleConfig{
+				Title: fmt.Sprintf("Run result — %s", m.result.specID),
+			})
+		}
+	}
+	if strings.TrimSpace(title) != "" {
+		sections = append(sections, title)
+	}
+
+	bodyParts := []string{}
+	if m.phase == phaseRunning {
+		attemptLine := "Waiting for attempts to start"
+		stage := ""
+		if m.running != nil {
+			stage = strings.TrimSpace(m.running.stage)
+			if stage != "" {
+				stage = strings.Title(stage)
+			}
+		}
+		if m.running != nil && m.running.attempt > 0 && m.running.totalAttempts > 0 {
+			if stage != "" {
+				attemptLine = fmt.Sprintf("%s — attempt %d of %d", stage, m.running.attempt, m.running.totalAttempts)
+			} else {
+				attemptLine = fmt.Sprintf("Attempt %d of %d", m.running.attempt, m.running.totalAttempts)
+			}
+		} else if stage != "" {
+			attemptLine = stage
+		} else if m.running != nil && m.running.started {
+			attemptLine = "Streaming Codex logs..."
+		}
+		bodyParts = append(bodyParts, components.SpinnerLine(m.spinner.View(), attemptLine))
+		if m.running != nil {
+			if chip := components.ResumeChip(m.running.resumeCmd); chip != "" {
+				bodyParts = append(bodyParts, chip)
+			}
+		}
+	} else if m.phase == phaseResult {
+		if m.result != nil {
+			if m.result.err != nil {
+				bodyParts = append(bodyParts, components.Flash(components.FlashDanger, fmt.Sprintf("Error: %v", m.result.err)))
+			} else {
+				statusLabel := strings.ToUpper(string(m.result.status))
+				if statusLabel == "" {
+					statusLabel = "UNKNOWN"
+				}
+				bodyParts = append(bodyParts, fmt.Sprintf("Spec status: %s", statusLabel))
+				if m.result.exitErr != nil {
+					bodyParts = append(bodyParts, components.Flash(components.FlashDanger, fmt.Sprintf("implement-spec exited with code %d: %v", m.result.exitCode, m.result.exitErr)))
+				} else {
+					bodyParts = append(bodyParts, components.Flash(components.FlashSuccess, "implement-spec exited successfully."))
+				}
+			}
+			if len(m.result.remaining) > 0 {
+				bodyParts = append(bodyParts, components.BulletList(m.result.remaining))
+			}
+			if chip := components.ResumeChip(m.result.resumeCmd); chip != "" {
+				bodyParts = append(bodyParts, chip)
+			}
+		}
+	}
+
+	if m.flash != "" {
+		bodyParts = append(bodyParts, components.Flash(components.FlashInfo, m.flash))
+	}
+
+	// Placeholder viewport with empty content captures border + status chrome.
+	bodyParts = append(bodyParts, components.ViewportCard(components.ViewportCardOptions{
+		Width:   m.width,
+		Content: "",
+		Status: func() string {
+			if m.phase == phaseResult {
+				return "Scroll with ↑/↓, PgUp/PgDn or mouse — enter to return"
+			}
+			return "Scroll with ↑/↓, PgUp/PgDn or mouse"
+		}(),
+	}))
+
+	if m.phase == phaseRunning && m.confirmKill {
+		bodyParts = append(bodyParts, components.Modal(components.ModalConfig{
+			Width: m.width,
+			Title: "Stop the current run?",
+			Body: []string{
+				"implement-spec will be terminated.",
+				"Press ESC again within 2s to stop; press Q twice to quit Helm.",
+			},
+		}))
+	}
+
+	help := []components.HelpEntry{}
+	if m.phase == phaseRunning {
+		help = []components.HelpEntry{
+			{Key: "↑/↓ PgUp/PgDn", Label: "scroll"},
+			{Key: "mouse", Label: "scroll"},
+			{Key: "c", Label: "copy resume"},
+			{Key: "esc×2", Label: "stop run"},
+			{Key: "q×2", Label: "quit"},
+		}
+	} else {
+		help = []components.HelpEntry{
+			{Key: "enter/r", Label: "back to list"},
+			{Key: "c", Label: "copy resume"},
+			{Key: "q", Label: "quit"},
+		}
+	}
+
+	body := strings.Join(bodyParts, "\n\n")
+	helpBar := components.HelpBar(contentWidth(m.width), help...)
+
+	if strings.TrimSpace(body) != "" {
+		sections = append(sections, body)
+	}
+	if strings.TrimSpace(helpBar) != "" {
+		sections = append(sections, helpBar)
+	}
+
+	return lipgloss.Height(strings.Join(sections, "\n\n"))
 }
 
 func (m *model) refreshItems(preserve string) {
@@ -436,7 +648,13 @@ func (m *model) startRun(folder *specs.SpecFolder) tea.Cmd {
 	m.flash = ""
 	m.viewport.SetContent("")
 	m.viewport.GotoTop()
-	m.running = &runState{spec: folder}
+	m.running = &runState{
+		spec:          folder,
+		attempt:       1,
+		totalAttempts: resolveMaxAttempts(m.opts.Settings),
+		stage:         "implementing",
+		started:       true,
+	}
 	m.resize()
 	return tea.Batch(m.spinner.Tick, startRunnerCmd(m.opts, folder))
 }
@@ -452,13 +670,25 @@ func (m *model) appendLog(msg runnerLogMsg) {
 	if len(m.logs) > m.logLimit {
 		m.logs = m.logs[len(m.logs)-m.logLimit:]
 	}
+	wasAtBottom := m.viewport.AtBottom()
 	content := buildLogContent(m.logs)
 	m.viewport.SetContent(content)
-	m.viewport.GotoBottom()
-
-	if attempt, total, ok := parseAttemptLine(entry.text); ok {
-		m.running.attempt = attempt
-		m.running.totalAttempts = total
+	if wasAtBottom {
+		m.viewport.GotoBottom()
+	}
+	if m.running != nil {
+		if attempt, total, ok := parseAttemptLine(entry.text); ok {
+			m.running.attempt = attempt
+			m.running.totalAttempts = total
+		}
+		if stage := classifyStage(entry.text); stage != "" {
+			m.running.stage = stage
+		}
+		// consider the run "started" as soon as any log arrives, so the spinner line
+		// can fall back to a useful message even if attempt/stage markers are absent.
+		if !m.running.started {
+			m.running.started = true
+		}
 	}
 }
 
@@ -570,6 +800,40 @@ func buildLogContent(entries []logEntry) string {
 	return b.String()
 }
 
+var stageRe = regexp.MustCompile(`(?i)^stage:\s*(implementing|verifying)`)
+
+func classifyStage(line string) string {
+	m := stageRe.FindStringSubmatch(strings.TrimSpace(line))
+	if len(m) == 2 {
+		return strings.ToLower(m[1])
+	}
+	return ""
+}
+
+// resolveMaxAttempts returns the configured max attempts from settings or env.
+func resolveMaxAttempts(settings *config.Settings) int {
+	if settings == nil {
+		return 0
+	}
+	if v := strings.TrimSpace(os.Getenv("MAX_ATTEMPTS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	if settings.DefaultMaxAttempts > 0 {
+		return settings.DefaultMaxAttempts
+	}
+	return 0
+}
+
+func contentWidth(width int) int {
+	w := width - theme.ViewHorizontalPadding*2
+	if w < 24 {
+		return 24
+	}
+	return w
+}
+
 type logEntry struct {
 	stream string
 	text   string
@@ -579,6 +843,8 @@ type runState struct {
 	spec          *specs.SpecFolder
 	attempt       int
 	totalAttempts int
+	started       bool
+	stage         string
 	finished      bool
 	exitErr       error
 	exitCode      int

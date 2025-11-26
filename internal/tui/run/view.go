@@ -179,8 +179,21 @@ func (m *model) runningView() string {
 	}
 	spec := m.running.spec.Metadata
 	attemptLine := "Waiting for attempts to start"
+	stage := strings.TrimSpace(m.running.stage)
+	if stage != "" {
+		stage = strings.Title(stage)
+	}
+
 	if m.running.attempt > 0 && m.running.totalAttempts > 0 {
-		attemptLine = fmt.Sprintf("Attempt %d of %d", m.running.attempt, m.running.totalAttempts)
+		if stage != "" {
+			attemptLine = fmt.Sprintf("%s — attempt %d of %d", stage, m.running.attempt, m.running.totalAttempts)
+		} else {
+			attemptLine = fmt.Sprintf("Attempt %d of %d", m.running.attempt, m.running.totalAttempts)
+		}
+	} else if stage != "" {
+		attemptLine = stage
+	} else if m.running.started {
+		attemptLine = "Streaming Codex logs..."
 	}
 	sections := []string{
 		components.SpinnerLine(m.spinner.View(), attemptLine),
@@ -194,7 +207,7 @@ func (m *model) runningView() string {
 	viewport := components.ViewportCard(components.ViewportCardOptions{
 		Width:   m.width,
 		Content: m.viewport.View(),
-		Status:  "PgUp/PgDn to scroll logs",
+		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse",
 	})
 	sections = append(sections, viewport)
 	if m.confirmKill {
@@ -208,7 +221,8 @@ func (m *model) runningView() string {
 		}))
 	}
 	help := []components.HelpEntry{
-		{Key: "PgUp/PgDn", Label: "scroll"},
+		{Key: "↑/↓ PgUp/PgDn", Label: "scroll"},
+		{Key: "mouse", Label: "scroll"},
 		{Key: "c", Label: "copy resume"},
 		{Key: "esc×2", Label: "stop run"},
 		{Key: "q×2", Label: "quit"},
@@ -252,7 +266,7 @@ func (m *model) resultView() string {
 	viewport := components.ViewportCard(components.ViewportCardOptions{
 		Width:   m.width,
 		Content: m.viewport.View(),
-		Status:  "PgUp/PgDn scroll — enter to return",
+		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse — enter to return",
 	})
 	lines = append(lines, viewport)
 	help := []components.HelpEntry{

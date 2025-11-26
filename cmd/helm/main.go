@@ -92,6 +92,7 @@ func newRootCmd() *cobra.Command {
 		newRunCmd(),
 		newSpecCmd(),
 		newStatusCmd(),
+		newAAACmd(),
 	)
 
 	// Root (bare `helm`) opens the home TUI.
@@ -310,6 +311,18 @@ func newStatusCmd() *cobra.Command {
 				}
 				return err
 			}
+			return nil
+		},
+	}
+}
+
+func newAAACmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "aaa",
+		Short: "Print a minimal confirmation message for the aaa spec",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintln(cmd.OutOrStdout(), "aaa command ready - wiring looks good!")
 			return nil
 		},
 	}

@@ -52,16 +52,22 @@ type SpecListItemViewModel struct {
 
 // SpecListItem renders a two-line spec list row.
 func SpecListItem(vm SpecListItemViewModel) string {
-	header := fmt.Sprintf("%s %s — %s", vm.BadgeStyle.Render(vm.BadgeText), vm.ID, vm.Name)
-	if vm.Selected {
-		header = theme.SelectedStyle.Render(header)
-	}
+	cursor := "  "
+	headerStyle := theme.BodyStyle
 	summaryStyle := theme.HintStyle
+	lastStyle := theme.HintStyle
+	if vm.Selected {
+		cursor = "▶ "
+		// Match status selector: highlight with bold text but keep background unchanged.
+		headerStyle = theme.BodyStyle.Bold(true)
+	}
 	if vm.Warning {
 		summaryStyle = theme.WarningStyle
 	}
-	summary := summaryStyle.Render(vm.Summary)
-	last := theme.HintStyle.Render(vm.LastRun)
+
+	header := headerStyle.Render(fmt.Sprintf("%s%s — %s", cursor+vm.BadgeStyle.Render(vm.BadgeText), vm.ID, vm.Name))
+	summary := summaryStyle.Render(fmt.Sprintf("%s%s", strings.Repeat(" ", len(cursor)), vm.Summary))
+	last := lastStyle.Render(fmt.Sprintf("%s%s", strings.Repeat(" ", len(cursor)), vm.LastRun))
 	return strings.Join([]string{header, summary, last}, "\n")
 }
 

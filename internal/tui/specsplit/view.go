@@ -72,7 +72,7 @@ func runningView(m *model) string {
 	lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
 		Width:   m.width,
 		Content: m.vp.View(),
-		Status:  "PgUp/PgDn to scroll logs",
+		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse",
 	}))
 	if m.confirmKill {
 		lines = append(lines, components.Modal(components.ModalConfig{
@@ -85,7 +85,8 @@ func runningView(m *model) string {
 		}))
 	}
 	help := []components.HelpEntry{
-		{Key: "PgUp/PgDn", Label: "scroll logs"},
+		{Key: "↑/↓ PgUp/PgDn", Label: "scroll logs"},
+		{Key: "mouse", Label: "scroll logs"},
 		{Key: "c", Label: "copy resume"},
 		{Key: "esc×2", Label: "stop split"},
 		{Key: "q×2", Label: "quit helm"},

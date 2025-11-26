@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/polarzero/helm/internal/config"
 	splitting "github.com/polarzero/helm/internal/specsplit"
@@ -47,7 +48,7 @@ type Options struct {
 // Run launches the spec split TUI.
 func Run(opts Options) (*Outcome, error) {
 	mdl := newModel(opts)
-	prog := tea.NewProgram(mdl, tea.WithAltScreen())
+	prog := tea.NewProgram(mdl, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	res, err := prog.Run()
 	if err != nil {
 		return nil, err
@@ -113,6 +114,7 @@ func newModel(opts Options) *model {
 	sp := components.NewSpinner()
 
 	vp := viewport.New(80, 12)
+	vp.MouseWheelEnabled = true
 
 	return &model{
 		opts:    opts,
@@ -130,9 +132,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = v.Width
 		m.height = v.Height
-		contentWidth := max(20, v.Width-(theme.ViewHorizontalPadding*2)-6)
-		m.vp.Width = contentWidth
-		m.vp.Height = max(3, min(5, v.Height-12))
+		m.resize()
 		return m, nil
 	case tea.KeyMsg:
 		if v.Type == tea.KeyCtrlC {
@@ -212,6 +212,7 @@ func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key.Type {
 		case tea.KeyEnter:
 			m.phase = phaseInput
+			m.resize()
 		case tea.KeyCtrlC:
 			m.canceled = true
 			return m, tea.Quit
@@ -244,6 +245,7 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sessionID = ""
 			m.resumeCmd = ""
 			m.vp.SetContent("")
+			m.resize()
 			return m, tea.Batch(m.spinner.Tick, startSplitCmd(m.opts, m.draft))
 		case tea.KeyCtrlC:
 			m.canceled = true
@@ -298,6 +300,7 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmKill = false
 		m.killKey = ""
 		m.stream = nil
+		m.resize()
 		if v.err != nil {
 			m.appendLog(splitLogMsg{stream: "stderr", text: v.err.Error()})
 		}
@@ -350,23 +353,103 @@ func (m *model) appendLog(msg splitLogMsg) {
 	if len(m.logs) > 2000 {
 		m.logs = m.logs[len(m.logs)-2000:]
 	}
+	wasAtBottom := m.vp.AtBottom()
 	m.vp.SetContent(strings.Join(m.logs, "\n"))
-	m.vp.GotoBottom()
+	if wasAtBottom {
+		m.vp.GotoBottom()
+	}
 }
 
 func (m *model) View() string {
+	var view string
 	switch m.phase {
 	case phaseIntro:
-		return introView()
+		view = introView()
 	case phaseInput:
-		return inputView(m)
+		view = inputView(m)
 	case phaseRunning:
-		return runningView(m)
+		view = runningView(m)
 	case phaseDone:
-		return doneView(m)
+		view = doneView(m)
 	default:
-		return ""
+		view = ""
 	}
+	return components.PadToHeight(view, m.height)
+}
+
+func (m *model) resize() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+
+	bodyWidth := contentWidth(m.width)
+	m.vp.Width = max(10, bodyWidth-4) // account for card border + padding
+
+	if m.phase != phaseRunning {
+		return
+	}
+
+	chrome := m.runningChromeHeight()
+	available := m.height - (theme.ViewTopPadding + theme.ViewBottomPadding) - chrome
+	if available < 3 {
+		available = max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
+	}
+	m.vp.Height = available
+}
+
+func (m *model) runningChromeHeight() int {
+	title := components.TitleBar(components.TitleConfig{Title: "Splitting spec"})
+
+	lines := []string{
+		components.SpinnerLine(m.spinner.View(), func() string {
+			if m.opts.PlanPath != "" {
+				return fmt.Sprintf("Reading plan from %s...", m.opts.PlanPath)
+			}
+			return "Splitting via Codex..."
+		}()),
+	}
+	if chip := components.ResumeChip(m.resumeCmd); chip != "" {
+		lines = append(lines, chip)
+	}
+	if m.flash != "" {
+		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
+	}
+	lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
+		Width:   m.width,
+		Content: "",
+		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse",
+	}))
+	if m.confirmKill {
+		lines = append(lines, components.Modal(components.ModalConfig{
+			Width: m.width,
+			Title: "Stop the current split?",
+			Body: []string{
+				"Codex will be terminated.",
+				"Press ESC again within 2s to stop; press Q twice to quit Helm.",
+			},
+		}))
+	}
+
+	help := components.HelpBar(contentWidth(m.width), []components.HelpEntry{
+		{Key: "↑/↓ PgUp/PgDn", Label: "scroll logs"},
+		{Key: "mouse", Label: "scroll logs"},
+		{Key: "c", Label: "copy resume"},
+		{Key: "esc×2", Label: "stop split"},
+		{Key: "q×2", Label: "quit helm"},
+	}...)
+
+	sections := []string{}
+	if strings.TrimSpace(title) != "" {
+		sections = append(sections, title)
+	}
+	body := strings.Join(lines, "\n\n")
+	if strings.TrimSpace(body) != "" {
+		sections = append(sections, body)
+	}
+	if strings.TrimSpace(help) != "" {
+		sections = append(sections, help)
+	}
+	return lipgloss.Height(strings.Join(sections, "\n\n"))
 }
 
 func (m *model) openEditorCmd() tea.Cmd {
@@ -533,4 +616,12 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func contentWidth(width int) int {
+	w := width - theme.ViewHorizontalPadding*2
+	if w < 24 {
+		return 24
+	}
+	return w
 }

@@ -123,8 +123,7 @@ func (m *model) Init() tea.Cmd {
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.applySize(msg.Width, msg.Height)
 		return m, nil
 	}
 
@@ -339,22 +338,27 @@ func (m *model) View() string {
 	}
 	switch m.step {
 	case stepIntro:
-		return introView(m.width)
+		return components.PadToHeight(introView(m.width), m.height)
 	case stepMode:
-		return modeView(m.width, m.modeChoices, m.modeIndex)
+		return components.PadToHeight(modeView(m.width, m.modeChoices, m.modeIndex), m.height)
 	case stepCommands:
-		return commandsView(m.width, m.commands, m.commandInput.View())
+		return components.PadToHeight(commandsView(m.width, m.commands, m.commandInput.View()), m.height)
 	case stepOptions:
-		return optionsView(m.width, m.specsRoot.View(), m.focusIndex, m.optionsErr)
+		return components.PadToHeight(optionsView(m.width, m.specsRoot.View(), m.focusIndex, m.optionsErr), m.height)
 	case stepConfirm:
-		return confirmView(m.width, m.answers())
+		return components.PadToHeight(confirmView(m.width, m.answers()), m.height)
 	case stepRunning:
-		return runningView(m.width, m.spinner.View())
+		return components.PadToHeight(runningView(m.width, m.spinner.View()), m.height)
 	case stepComplete:
-		return completeView(m.width, m.result, m.err)
+		return components.PadToHeight(completeView(m.width, m.result, m.err), m.height)
 	default:
 		return ""
 	}
+}
+
+func (m *model) applySize(width, height int) {
+	m.width = width
+	m.height = height
 }
 
 func (m *model) answers() innerscaffold.Answers {

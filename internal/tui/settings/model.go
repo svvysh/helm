@@ -85,6 +85,8 @@ type model struct {
 	rootInput textinput.Model
 	maxInput  textinput.Model
 	acInput   textinput.Model
+	width     int
+	height    int
 }
 
 func newModel(settings config.Settings) model {
@@ -110,6 +112,10 @@ func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
@@ -264,9 +270,11 @@ func (m model) View() string {
 		{Key: "esc", Label: "cancel"},
 	}
 	body := strings.Join(lines, "\n")
-	return components.PageShell(components.PageShellOptions{
+	view := components.PageShell(components.PageShellOptions{
+		Width:       m.width,
 		Title:       components.TitleConfig{Title: "Helm settings"},
 		Body:        body,
 		HelpEntries: help,
 	})
+	return components.PadToHeight(view, m.height)
 }

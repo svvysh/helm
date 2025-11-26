@@ -7,7 +7,7 @@ import (
 	"github.com/polarzero/helm/internal/tui/theme"
 )
 
-func buildGraphLines(entries []*entry) []string {
+func buildGraphLines(entries []*entry, selectedID string) []string {
 	if len(entries) == 0 {
 		return []string{"No specs for this focus."}
 	}
@@ -39,7 +39,7 @@ func buildGraphLines(entries []*entry) []string {
 	}
 	sort.Strings(roots)
 
-	builder := graphBuilder{subset: subset}
+	builder := graphBuilder{subset: subset, selectedID: selectedID}
 	for i, id := range roots {
 		builder.walk(id, "", i == len(roots)-1, true, nil)
 	}
@@ -50,8 +50,9 @@ func buildGraphLines(entries []*entry) []string {
 }
 
 type graphBuilder struct {
-	subset map[string]*entry
-	lines  []string
+	subset     map[string]*entry
+	lines      []string
+	selectedID string
 }
 
 func (b *graphBuilder) walk(id, prefix string, last bool, root bool, stack map[string]struct{}) {
@@ -124,7 +125,11 @@ func (b *graphBuilder) formatEntry(e *entry) string {
 	if e == nil {
 		return ""
 	}
-	text := fmt.Sprintf("%s %s — %s", e.BadgeStyle.Render(e.BadgeText), e.ID, e.Name)
+	cursor := "  "
+	if e.ID == b.selectedID {
+		cursor = "▶ "
+	}
+	text := fmt.Sprintf("%s%s %s — %s", cursor, e.BadgeStyle.Render(e.BadgeText), e.ID, e.Name)
 	if e.HasUnmetDeps && e.BlockReason != "" {
 		text += " " + theme.HintStyle.Render(fmt.Sprintf("(needs: %s)", e.BlockReason))
 	}
