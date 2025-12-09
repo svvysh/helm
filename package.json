@@ -1,7 +1,0 @@
-{
-  "name": "helm",
-  "private": true,
-  "scripts": {
-    "all": "go test ./..."
-  }
-}

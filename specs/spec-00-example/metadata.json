@@ -1,9 +1,0 @@
-{
-  "id": "spec-00-example",
-  "name": "Example spec workspace walkthrough",
-  "status": "todo",
-  "dependsOn": [],
-  "acceptanceCommands": [
-    "pnpm all"
-  ]
-}

@@ -1,6 +1,24 @@
-[submodule "references/glow"]
-	path = references/glow
-	url = https://github.com/charmbracelet/glow
-[submodule "references/ultraviolet"]
-	path = references/ultraviolet
-	url = https://github.com/charmbracelet/ultraviolet.git
+[submodule "references/crates-tui"]
+	path = references/crates-tui
+	url = https://github.com/ratatui-org/crates-tui
+[submodule "references/gitui"]
+	path = references/gitui
+	url = https://github.com/extrawurst/gitui
+[submodule "references/bottom"]
+	path = references/bottom
+	url = https://github.com/ClementTsang/bottom
+[submodule "references/spotify-tui"]
+	path = references/spotify-tui
+	url = https://github.com/Rigellute/spotify-tui
+[submodule "references/xplr"]
+	path = references/xplr
+	url = https://github.com/sayanarijit/xplr
+[submodule "references/kmon"]
+	path = references/kmon
+	url = https://github.com/orhun/kmon
+[submodule "references/rainfrog"]
+	path = references/rainfrog
+	url = https://github.com/achristmascarl/rainfrog
+[submodule "references/oxker"]
+	path = references/oxker
+	url = https://github.com/mrjackwills/oxker
