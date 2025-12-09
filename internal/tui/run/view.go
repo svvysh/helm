@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/polarzero/helm/internal/specs"
 	"github.com/polarzero/helm/internal/tui/components"
@@ -181,7 +183,7 @@ func (m *model) runningView() string {
 	attemptLine := "Waiting for attempts to start"
 	stage := strings.TrimSpace(m.running.stage)
 	if stage != "" {
-		stage = strings.Title(stage)
+		stage = cases.Title(language.Und).String(stage)
 	}
 
 	if m.running.attempt > 0 && m.running.totalAttempts > 0 {
@@ -205,9 +207,10 @@ func (m *model) runningView() string {
 		sections = append(sections, components.Flash(components.FlashInfo, m.flash))
 	}
 	viewport := components.ViewportCard(components.ViewportCardOptions{
-		Width:   m.width,
-		Content: m.viewport.View(),
-		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse",
+		Width:        m.width,
+		Content:      m.viewport.View(),
+		Status:       "Scroll with ↑/↓, PgUp/PgDn or mouse",
+		Preformatted: true,
 	})
 	sections = append(sections, viewport)
 	if m.confirmKill {
@@ -264,9 +267,10 @@ func (m *model) resultView() string {
 		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 	}
 	viewport := components.ViewportCard(components.ViewportCardOptions{
-		Width:   m.width,
-		Content: m.viewport.View(),
-		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse — enter to return",
+		Width:        m.width,
+		Content:      m.viewport.View(),
+		Status:       "Scroll with ↑/↓, PgUp/PgDn or mouse — enter to return",
+		Preformatted: true,
 	})
 	lines = append(lines, viewport)
 	help := []components.HelpEntry{

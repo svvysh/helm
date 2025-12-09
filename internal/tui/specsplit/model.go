@@ -135,6 +135,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, nil
 	case tea.KeyMsg:
+		v = components.NormalizeKey(v)
 		if v.Type == tea.KeyCtrlC {
 			if m.phase == phaseRunning && m.cancelSplit != nil {
 				m.cancelSplit()
@@ -209,6 +210,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
+		key = components.NormalizeKey(key)
 		switch key.Type {
 		case tea.KeyEnter:
 			m.phase = phaseInput
@@ -223,6 +225,7 @@ func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
+		key = components.NormalizeKey(key)
 		switch key.Type {
 		case tea.KeyEnter:
 			// Allow Option/Alt+Enter or Shift/Ctrl+Enter to insert newlines; only plain Enter starts splitting.
@@ -354,7 +357,8 @@ func (m *model) appendLog(msg splitLogMsg) {
 		m.logs = m.logs[len(m.logs)-2000:]
 	}
 	wasAtBottom := m.vp.AtBottom()
-	m.vp.SetContent(strings.Join(m.logs, "\n"))
+	content := components.FitStyledContent(strings.Join(m.logs, "\n"), m.vp.Width, true, "…")
+	m.vp.SetContent(content)
 	if wasAtBottom {
 		m.vp.GotoBottom()
 	}
@@ -374,6 +378,7 @@ func (m *model) View() string {
 	default:
 		view = ""
 	}
+	view = components.ClampHeight(view, m.height)
 	return components.PadToHeight(view, m.height)
 }
 
@@ -382,19 +387,36 @@ func (m *model) resize() {
 		return
 	}
 
-	bodyWidth := contentWidth(m.width)
-	m.vp.Width = max(10, bodyWidth-4) // account for card border + padding
+	bodyArea := components.ContentArea(m.width, m.height)
+	m.vp.Width = components.ViewportInnerWidth(m.width, theme.DefaultCardBorder)
 
 	if m.phase != phaseRunning {
 		return
 	}
 
 	chrome := m.runningChromeHeight()
-	available := m.height - (theme.ViewTopPadding + theme.ViewBottomPadding) - chrome
+	_, logsArea := components.SplitVertical(bodyArea, components.Fixed(chrome))
+	available := logsArea.Dy()
 	if available < 3 {
-		available = max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
+		available = 3
 	}
 	m.vp.Height = available
+	if len(m.logs) > 0 {
+		m.vp.SetContent(components.FitStyledContent(strings.Join(m.logs, "\n"), m.vp.Width, true, "…"))
+	}
+
+	// If the rendered view is still taller than the window, shrink the viewport
+	// by the overflow amount (but keep a small minimum).
+	rendered := runningView(m)
+	if over := lipgloss.Height(rendered) - m.height; over > 0 && m.vp.Height > 3 {
+		newHeight := max(3, m.vp.Height-over)
+		if newHeight < m.vp.Height {
+			m.vp.Height = newHeight
+			if len(m.logs) > 0 {
+				m.vp.SetContent(components.FitStyledContent(strings.Join(m.logs, "\n"), m.vp.Width, true, "…"))
+			}
+		}
+	}
 }
 
 func (m *model) runningChromeHeight() int {
@@ -414,11 +436,6 @@ func (m *model) runningChromeHeight() int {
 	if m.flash != "" {
 		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 	}
-	lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
-		Width:   m.width,
-		Content: "",
-		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse",
-	}))
 	if m.confirmKill {
 		lines = append(lines, components.Modal(components.ModalConfig{
 			Width: m.width,
@@ -430,7 +447,7 @@ func (m *model) runningChromeHeight() int {
 		}))
 	}
 
-	help := components.HelpBar(contentWidth(m.width), []components.HelpEntry{
+	help := components.HelpBar(components.ContentWidth(m.width), []components.HelpEntry{
 		{Key: "↑/↓ PgUp/PgDn", Label: "scroll logs"},
 		{Key: "mouse", Label: "scroll logs"},
 		{Key: "c", Label: "copy resume"},
@@ -449,7 +466,8 @@ func (m *model) runningChromeHeight() int {
 	if strings.TrimSpace(help) != "" {
 		sections = append(sections, help)
 	}
-	return lipgloss.Height(strings.Join(sections, "\n\n"))
+	chromeHeight := lipgloss.Height(strings.Join(sections, "\n\n"))
+	return chromeHeight + components.ViewportChromeHeight(m.width, theme.DefaultCardBorder, true)
 }
 
 func (m *model) openEditorCmd() tea.Cmd {
@@ -616,12 +634,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func contentWidth(width int) int {
-	w := width - theme.ViewHorizontalPadding*2
-	if w < 24 {
-		return 24
-	}
-	return w
 }

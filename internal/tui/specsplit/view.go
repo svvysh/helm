@@ -70,9 +70,10 @@ func runningView(m *model) string {
 		lines = append(lines, components.Flash(components.FlashInfo, m.flash))
 	}
 	lines = append(lines, components.ViewportCard(components.ViewportCardOptions{
-		Width:   m.width,
-		Content: m.vp.View(),
-		Status:  "Scroll with ↑/↓, PgUp/PgDn or mouse",
+		Width:        m.width,
+		Content:      m.vp.View(),
+		Status:       "Scroll with ↑/↓, PgUp/PgDn or mouse",
+		Preformatted: true,
 	}))
 	if m.confirmKill {
 		lines = append(lines, components.Modal(components.ModalConfig{

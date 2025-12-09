@@ -17,6 +17,7 @@ SUMMARY
 - Built a Glow-derived palette and a reusable Bubble Tea kit (`internal/tui/components`) containing TitleBar/PageShell, HelpBar, Flash/Modal, spinner & resume chips, text inputs/textarea skins, menu/spec list renderers, summary tables/bars, viewport cards, and bullet/FormField helpers so every screen shares the same primitives.
 - Rewrote Home, Run (list/running/result), Status, Spec Split (intro/input/running/done), Scaffold (all wizard steps), and Settings views to render exclusively through the shared components while keeping the underlying update/keybinding logic intact.
 - Run mode now streams attempt spinner lines, resume chips, flash banners, modals for unmet deps/kill confirmations, and log viewport cards; Status shows both summary bar/table plus styled table/graph panes; Scaffold/Spec Split/Settings use shared form fields, bullet lists, and help bars.
+- Ported Ultraviolet primitives: shared layout rectangles (`ContentArea`, `SplitVertical/Horizontal`, `Top*/Bottom*Rect`), border variants (normal/rounded/thick/double/block/half-block/hidden/markdown/ascii), ANSI-aware styled string wrapper (wrap/truncate with wcwidth/grapheme tail), and centralized key normalization before Bubble Tea handling. Verified against `references/ultraviolet/{layout.go,border.go,styled.go,key_table.go}`.
 - Added a direct `github.com/mattn/go-runewidth` dependency for width-aware help/tables and wired the run model to tick a Glow-styled spinner during executions.
 - `make all` (deps, tidy, fmt, vet, lint, test, build, multi-platform release) completes successfully.
 
@@ -31,18 +32,22 @@ CHANGELOG
 - `internal/tui/components/lists.go` – MenuList cursoring, SpecListItem renderer, and accent BulletList.
 - `internal/tui/components/form.go` – FormFieldView for labeled value rows with focus/error messaging.
 - `internal/tui/components/tables.go` – SummaryBar, SummaryTable, and Bubble-table styles aligned to the palette.
-- `internal/tui/components/viewport.go` – ViewportCard border + status bar wrapper for logs/graphs.
+- `internal/tui/components/viewport.go` – ViewportCard border + status bar wrapper for logs/graphs with selectable border variants and styled-string wrapping.
+- `internal/tui/components/layout2.go` – Ultraviolet rectangle helpers (`Split*Rect`, centering, edge rects) plus `ContentArea`/`ViewArea` for padding-aware sizing.
+- `internal/tui/components/styled.go` – ANSI-aware fit/wrap/truncate helper using wcwidth/grapheme width and styled string width utility.
+- `internal/tui/components/keys.go` – Shared key normalization (Ctrl+I vs Tab, Shift+Tab, Backspace/Delete, keypad modes) applied before pane logic.
 - `internal/tui/home/home.go` – tracked window size and re-rendered the home menu via PageShell + MenuList + HelpBar.
-- `internal/tui/run/model.go` – added Glow spinner state/ticks, preserved behavior, and ensured resize/start hooks feed new components.
+- `internal/tui/run/model.go` – added Glow spinner state/ticks, preserved behavior, ensured resize/start hooks feed new components, and rewrapped logs via styled-string helper.
 - `internal/tui/run/view.go` – replaced bespoke strings with SpecListItem, Flash, ResumeChip, SpinnerLine, ViewportCard, Modal, and HelpBar for every phase.
 - `internal/tui/scaffold/model.go` – used componentized text inputs/spinner and passed terminal width to view helpers.
 - `internal/tui/scaffold/views.go` – rewrote each wizard step with PageShell, MenuList, FormField, BulletList, SpinnerLine, and shared help bars.
 - `internal/tui/settings/model.go` – adopted component text inputs/form fields and wrapped the page in PageShell.
-- `internal/tui/specsplit/model.go` – swapped in Glow textarea/spinner and propagated width to viewport cards.
+- `internal/tui/specsplit/model.go` – swapped in Glow textarea/spinner, propagated width to viewport cards, and wrapped streamed logs using the styled-string helper.
 - `internal/tui/specsplit/view.go` – reworked intro/input/running/done phases with Flash, ResumeChip, ViewportCard, SummaryTable, BulletList, and HelpBar.
-- `internal/tui/status/model.go` – applied component table styles and kept entry logic intact.
+- `internal/tui/status/model.go` – applied component table styles, padding-aware sizing helpers, and styled-string wrapping for graph viewport content.
 - `internal/tui/status/view.go` – wrapped the view in PageShell, added summary bar+table, viewport card for graph mode, and shared help entries.
 - `references/glow` (submodule) – gofumpt/goimports (via `make fmt`) touched tracked files; no intentional logic changes.
+- `references/ultraviolet` (submodule) – added as upstream source-of-truth for layout/border/styled-string/key helpers referenced above.
 
 TRACEABILITY
 - **Shared component usage:** Every TUI view now imports `internal/tui/components` for rendering (home/run/specsplit/scaffold/status/settings files above) eliminating one-off lipgloss styles; spec list rows use `SpecListItem`, menus use `MenuList`, forms use `FormFieldView`, logs/graphs use `ViewportCard`, and hints run through `HelpBar`.

@@ -1,3 +1,6 @@
 [submodule "references/glow"]
 	path = references/glow
 	url = https://github.com/charmbracelet/glow
+[submodule "references/ultraviolet"]
+	path = references/ultraviolet
+	url = https://github.com/charmbracelet/ultraviolet.git

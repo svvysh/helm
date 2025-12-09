@@ -45,7 +45,7 @@ func HelpBar(width int, entries ...HelpEntry) string {
 	line := strings.Join(pairs, helpDivider)
 	maxWidth := width
 	if maxWidth <= 0 {
-		maxWidth = viewWidth(width) - theme.ViewHorizontalPadding*2
+		maxWidth = ViewWidth(width) - theme.ViewHorizontalPadding*2
 	}
 	if runewidth.StringWidth(line) > maxWidth {
 		line = runewidth.Truncate(line, maxWidth, "…")

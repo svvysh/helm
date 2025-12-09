@@ -39,7 +39,7 @@ type PageShellOptions struct {
 
 // PageShell wraps a title, body, and help bar with shared padding and spacing.
 func PageShell(opts PageShellOptions) string {
-	width := viewWidth(opts.Width)
+	width := ViewWidth(opts.Width)
 	sections := make([]string, 0, 3)
 	if title := strings.TrimSpace(TitleBar(opts.Title)); title != "" {
 		sections = append(sections, title)
@@ -49,7 +49,7 @@ func PageShell(opts PageShellOptions) string {
 		sections = append(sections, body)
 	}
 	if len(opts.HelpEntries) > 0 {
-		help := HelpBar(contentWidth(width), opts.HelpEntries...)
+		help := HelpBar(ContentWidth(width), opts.HelpEntries...)
 		if help != "" {
 			sections = append(sections, help)
 		}
@@ -66,9 +66,10 @@ func PageShell(opts PageShellOptions) string {
 
 // ModalConfig defines the body of a confirmation modal.
 type ModalConfig struct {
-	Width int
-	Title string
-	Body  []string
+	Width  int
+	Title  string
+	Body   []string
+	Border theme.BorderVariant
 }
 
 // Modal renders a warning/danger modal using Glow-inspired colors.
@@ -76,7 +77,11 @@ func Modal(cfg ModalConfig) string {
 	if cfg.Title == "" && len(cfg.Body) == 0 {
 		return ""
 	}
-	width := contentWidth(cfg.Width)
+	width := ContentWidth(cfg.Width)
+	border := theme.BorderFor(theme.DefaultModalBorder)
+	if cfg.Border != "" {
+		border = theme.BorderFor(cfg.Border)
+	}
 	header := lipgloss.NewStyle().
 		Background(theme.Colors.Warning).
 		Foreground(theme.Colors.Surface).
@@ -93,7 +98,7 @@ func Modal(cfg ModalConfig) string {
 
 	panel := lipgloss.NewStyle().
 		Width(width).
-		Border(lipgloss.RoundedBorder()).
+		Border(border).
 		BorderForeground(theme.Colors.Warning).
 		Align(lipgloss.Left)
 

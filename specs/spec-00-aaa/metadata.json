@@ -1,0 +1,9 @@
+{
+  "id": "spec-00-aaa",
+  "name": "Initial aaa capability",
+  "status": "todo",
+  "dependsOn": [],
+  "acceptanceCommands": [
+    "pnpm all"
+  ]
+}

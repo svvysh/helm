@@ -129,6 +129,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		// Global quit with q / ctrl+c; Esc navigates back one step if possible, otherwise cancels.
 		if msg.String() == "q" || msg.Type == tea.KeyCtrlC {
 			m.cancelled = true
@@ -206,6 +207,7 @@ func previousStep(s step) (step, bool) {
 func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		if msg.Type == tea.KeyEnter {
 			m.step = stepMode
 			m.optionsErr = ""
@@ -217,6 +219,7 @@ func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		switch msg.String() {
 		case "up", "shift+tab":
 			m.modeIndex = (m.modeIndex - 1 + len(m.modeChoices)) % len(m.modeChoices)
@@ -232,6 +235,7 @@ func (m *model) updateMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateCommands(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		value := strings.TrimSpace(m.commandInput.Value())
 		switch msg.String() {
 		case "enter":
@@ -258,6 +262,7 @@ func (m *model) updateCommands(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateOptions(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		switch msg.String() {
 		case "enter":
 			if m.focusIndex == 0 {
@@ -291,6 +296,7 @@ func (m *model) validateSpecsRoot() error {
 func (m *model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		if msg.Type == tea.KeyEnter {
 			if err := m.validateSpecsRoot(); err != nil {
 				m.optionsErr = err.Error()
@@ -325,6 +331,7 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateComplete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		if msg.Type == tea.KeyEnter {
 			return m, tea.Quit
 		}

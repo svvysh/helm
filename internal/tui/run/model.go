@@ -16,6 +16,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/polarzero/helm/internal/config"
 	"github.com/polarzero/helm/internal/metadata"
@@ -186,6 +188,7 @@ func (m *model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	needClear := false
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		switch msg.String() {
 		case "esc":
 			if m.confirmUnmet {
@@ -264,6 +267,7 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.killKey = ""
 		return m, nil
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		switch msg.String() {
 		case "esc", "q":
 			if m.confirmKill && m.killKey == msg.String() {
@@ -354,6 +358,7 @@ func (m *model) updateRunning(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		switch msg.String() {
 		case "ctrl+c", "esc", "q":
 			if msg.String() == "q" {
@@ -395,6 +400,7 @@ func (m *model) View() string {
 	default:
 		view = ""
 	}
+	view = components.ClampHeight(view, m.height)
 	return components.PadToHeight(view, m.height)
 }
 
@@ -402,28 +408,53 @@ func (m *model) resize() {
 	if m.width == 0 || m.height == 0 {
 		return
 	}
+
+	bodyArea := components.ContentArea(m.width, m.height)
+
 	switch m.phase {
 	case phaseList:
 		chrome := m.listChromeHeight()
-		available := availableHeight(m.height, chrome)
-		if available < 3 {
-			available = max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
-		}
-		m.list.SetSize(contentWidth(m.width), available)
-	case phaseRunning, phaseResult:
-		available := availableHeight(m.height, m.logsChromeHeight())
-		minHeight := max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
+		_, listArea := components.SplitVertical(bodyArea, components.Fixed(chrome))
+		available := listArea.Dy()
+		minHeight := max(3, bodyArea.Dy())
 		if available < 3 {
 			available = minHeight
 		}
-		m.viewport.Width = max(10, contentWidth(m.width)-4) // account for card border + padding
+		m.list.SetSize(bodyArea.Dx(), available)
+	case phaseRunning, phaseResult:
+		chrome := m.logsChromeHeight()
+		_, logsArea := components.SplitVertical(bodyArea, components.Fixed(chrome))
+		available := logsArea.Dy()
+		if available < 3 {
+			available = 3 // keep a minimal viewport while avoiding overflow amplification
+		}
+		m.viewport.Width = components.ViewportInnerWidth(m.width, theme.DefaultCardBorder)
 		m.viewport.Height = available
-	}
-}
+		if len(m.logs) > 0 {
+			m.viewport.SetContent(components.FitStyledContent(buildLogContent(m.logs), m.viewport.Width, true, "…"))
+		}
 
-// availableHeight derives the space left for scrollable content after chrome and padding.
-func availableHeight(windowHeight, chromeHeight int) int {
-	return windowHeight - (theme.ViewTopPadding + theme.ViewBottomPadding) - chromeHeight
+		// Measure the rendered view; if it still overflows the terminal, shrink
+		// the viewport by the overflow amount (clamped to a small minimum).
+		rendered := ""
+		switch m.phase {
+		case phaseRunning:
+			rendered = m.runningView()
+		case phaseResult:
+			rendered = m.resultView()
+		}
+		if rendered != "" {
+			if over := lipgloss.Height(rendered) - m.height; over > 0 && m.viewport.Height > 3 {
+				newHeight := max(3, m.viewport.Height-over)
+				if newHeight < m.viewport.Height {
+					m.viewport.Height = newHeight
+					if len(m.logs) > 0 {
+						m.viewport.SetContent(components.FitStyledContent(buildLogContent(m.logs), m.viewport.Width, true, "…"))
+					}
+				}
+			}
+		}
+	}
 }
 
 // listChromeHeight measures all non-list chrome for the list phase at current width.
@@ -469,7 +500,7 @@ func (m *model) listChromeHeight() int {
 
 	title := components.TitleBar(components.TitleConfig{Title: "helm run"})
 	body := strings.Join(bodyParts, "\n\n")
-	helpBar := components.HelpBar(contentWidth(m.width), help...)
+	helpBar := components.HelpBar(components.ContentWidth(m.width), help...)
 
 	sections := make([]string, 0, 3)
 	if strings.TrimSpace(title) != "" {
@@ -514,7 +545,7 @@ func (m *model) logsChromeHeight() int {
 		if m.running != nil {
 			stage = strings.TrimSpace(m.running.stage)
 			if stage != "" {
-				stage = strings.Title(stage)
+				stage = cases.Title(language.Und).String(stage)
 			}
 		}
 		if m.running != nil && m.running.attempt > 0 && m.running.totalAttempts > 0 {
@@ -563,18 +594,6 @@ func (m *model) logsChromeHeight() int {
 		bodyParts = append(bodyParts, components.Flash(components.FlashInfo, m.flash))
 	}
 
-	// Placeholder viewport with empty content captures border + status chrome.
-	bodyParts = append(bodyParts, components.ViewportCard(components.ViewportCardOptions{
-		Width:   m.width,
-		Content: "",
-		Status: func() string {
-			if m.phase == phaseResult {
-				return "Scroll with ↑/↓, PgUp/PgDn or mouse — enter to return"
-			}
-			return "Scroll with ↑/↓, PgUp/PgDn or mouse"
-		}(),
-	}))
-
 	if m.phase == phaseRunning && m.confirmKill {
 		bodyParts = append(bodyParts, components.Modal(components.ModalConfig{
 			Width: m.width,
@@ -586,7 +605,7 @@ func (m *model) logsChromeHeight() int {
 		}))
 	}
 
-	help := []components.HelpEntry{}
+	var help []components.HelpEntry
 	if m.phase == phaseRunning {
 		help = []components.HelpEntry{
 			{Key: "↑/↓ PgUp/PgDn", Label: "scroll"},
@@ -604,7 +623,7 @@ func (m *model) logsChromeHeight() int {
 	}
 
 	body := strings.Join(bodyParts, "\n\n")
-	helpBar := components.HelpBar(contentWidth(m.width), help...)
+	helpBar := components.HelpBar(components.ContentWidth(m.width), help...)
 
 	if strings.TrimSpace(body) != "" {
 		sections = append(sections, body)
@@ -613,7 +632,9 @@ func (m *model) logsChromeHeight() int {
 		sections = append(sections, helpBar)
 	}
 
-	return lipgloss.Height(strings.Join(sections, "\n\n"))
+	chromeHeight := lipgloss.Height(strings.Join(sections, "\n\n"))
+	hasStatus := true
+	return chromeHeight + components.ViewportChromeHeight(m.width, theme.DefaultCardBorder, hasStatus)
 }
 
 func (m *model) refreshItems(preserve string) {
@@ -672,7 +693,8 @@ func (m *model) appendLog(msg runnerLogMsg) {
 	}
 	wasAtBottom := m.viewport.AtBottom()
 	content := buildLogContent(m.logs)
-	m.viewport.SetContent(content)
+	clamped := components.FitStyledContent(content, m.viewport.Width, true, "…")
+	m.viewport.SetContent(clamped)
 	if wasAtBottom {
 		m.viewport.GotoBottom()
 	}
@@ -824,14 +846,6 @@ func resolveMaxAttempts(settings *config.Settings) int {
 		return settings.DefaultMaxAttempts
 	}
 	return 0
-}
-
-func contentWidth(width int) int {
-	w := width - theme.ViewHorizontalPadding*2
-	if w < 24 {
-		return 24
-	}
-	return w
 }
 
 type logEntry struct {

@@ -50,8 +50,6 @@ func Run(opts Options) error {
 	return final.err
 }
 
-type viewMode int
-
 type focusMode int
 
 const (
@@ -281,6 +279,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, nil
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
@@ -308,7 +307,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 	if newSel := m.currentSelectionID(); newSel != prevSel {
-		m.graphViewport.SetContent(strings.Join(buildGraphLines(m.visible, newSel), "\n"))
+		content := components.FitStyledContent(strings.Join(buildGraphLines(m.visible, newSel), "\n"), m.graphViewport.Width, true, "…")
+		m.graphViewport.SetContent(content)
 	}
 	m.graphViewport, cmd = m.graphViewport.Update(msg)
 	if cmd != nil {
@@ -322,18 +322,22 @@ func (m *model) resize() {
 		return
 	}
 
+	bodyArea := components.ContentArea(m.width, m.height)
 	chrome := m.chromeHeight()
-	contentHeight := m.height - (theme.ViewTopPadding + theme.ViewBottomPadding) - chrome
+	_, scrollArea := components.SplitVertical(bodyArea, components.Fixed(chrome))
+	contentHeight := scrollArea.Dy()
+	minHeight := max(3, bodyArea.Dy())
 	if contentHeight < 3 {
-		contentHeight = max(3, m.height-(theme.ViewTopPadding+theme.ViewBottomPadding))
+		contentHeight = minHeight
 	}
 
 	m.table.SetHeight(contentHeight)
 	m.graphViewport.Height = contentHeight
-	m.graphViewport.Width = max(20, contentWidth(m.width)-4) // allow for card border + padding
+	m.graphViewport.Width = max(20, bodyArea.Dx()-4) // allow for card border + padding
 
 	m.table.SetColumns(m.computeColumns())
-	m.graphViewport.SetContent(strings.Join(buildGraphLines(m.visible, m.currentSelectionID()), "\n"))
+	graph := components.FitStyledContent(strings.Join(buildGraphLines(m.visible, m.currentSelectionID()), "\n"), m.graphViewport.Width, true, "…")
+	m.graphViewport.SetContent(graph)
 }
 
 func (m *model) refreshVisible(preserve string) {
@@ -353,7 +357,8 @@ func (m *model) refreshVisible(preserve string) {
 	m.selectRow(preserve)
 
 	content := buildGraphLines(m.visible, m.currentSelectionID())
-	m.graphViewport.SetContent(strings.Join(content, "\n"))
+	clamped := components.FitStyledContent(strings.Join(content, "\n"), m.graphViewport.Width, true, "…")
+	m.graphViewport.SetContent(clamped)
 	if len(content) == 0 {
 		m.graphViewport.SetContent("No specs discovered.")
 	}
@@ -513,7 +518,7 @@ func (m *model) reloadData() {
 }
 
 func (m *model) computeColumns() []table.Column {
-	total := contentWidth(m.width)
+	total := components.ContentWidth(m.width)
 	if total < 40 {
 		total = 40
 	}
@@ -555,7 +560,7 @@ func (m *model) chromeHeight() int {
 	opts := m.pageShellOptions("")
 
 	title := components.TitleBar(opts.Title)
-	helpBar := components.HelpBar(contentWidth(m.width), opts.HelpEntries...)
+	helpBar := components.HelpBar(components.ContentWidth(m.width), opts.HelpEntries...)
 
 	sections := []string{}
 	if strings.TrimSpace(title) != "" {
@@ -575,12 +580,4 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func contentWidth(width int) int {
-	w := width - theme.ViewHorizontalPadding*2
-	if w < 24 {
-		return 24
-	}
-	return w
 }

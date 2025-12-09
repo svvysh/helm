@@ -1,11 +1,11 @@
 # spec-07-tui-ux-refresh — Unified TUI component system
 
 ## Summary
-Rebuild the Helm TUI visuals around a small, reusable Bubble Tea component kit (colors, layout, controls) cloned from `references/glow`. Every screen—home, Run, Status, Breakdown/spec split, Scaffold, and Settings—must render with the same primitives so no view has bespoke lipgloss styling. Logic, hotkeys, and data stay the same; only presentation and component reuse change.
+Rebuild the Helm TUI visuals around a small, reusable Bubble Tea component kit (colors, layout, controls) cloned from `references/glow` and Charm’s Ultraviolet primitives. The Ultraviolet repo is vendored as a submodule at `references/ultraviolet` and is the authoritative source for layout helpers, borders, styled strings, and key normalization. Every screen—home, Run, Status, Breakdown/spec split, Scaffold, and Settings—must render with the same primitives so no view has bespoke lipgloss styling. Logic, hotkeys, and data stay the same; only presentation and component reuse change.
 
 ## Goals
 - Produce a complete inventory of everything we render across all Helm TUIs and map each element to a shared component.
-- Build a component kit under `internal/tui/components` (plus palette in `internal/tui/theme`) by cloning styles/behaviors from `references/glow`.
+- Build a component kit under `internal/tui/components` (plus palette in `internal/tui/theme`) by cloning styles/behaviors from `references/glow`, augmented with Ultraviolet layout/border/text/key primitives kept in sync with `references/ultraviolet`.
 - Re-skin every TUI view to use those components, preserving all existing behavior and shortcuts.
 - Ensure future screens can be assembled only from the shared components (no one-off lipgloss styles).
 
@@ -58,6 +58,12 @@ Implement under `internal/tui/components` (palette in `internal/tui/theme`). Use
 - **ResumeChip**: pill with command text and copy hint, borrowing `statusBarHelpStyle`/`statusBarMessageStyle` from `ui/pager.go`.
 - **ViewportCard**: bordered viewport with consistent padding and optional status bar at bottom (clone pager status bar structure from `ui/pager.go`). Used for logs, graph, and long content.
 - **SummaryTable**: monospace table renderer (width-aware) reused by Status graph/table and spec split results; header underline like Glow’s pager status bar.
+- **Layout helpers** (sourced from `references/ultraviolet/layout.go`): shared rectangle helpers (`SplitVertical/Horizontal`, `CenterRect`, `Top*/Bottom*Rect`) plus `ContentArea`/`ContentWidth` to replace ad-hoc width/height math in every view.
+- **Border variants** (from `references/ultraviolet/border.go`): reusable lipgloss borders (`normal`, `rounded`, `thick`, `double`, `block`, `outer-half`, `inner-half`, `hidden`, `markdown`, `ascii`) selectable per card/modal/textarea—no per-view border definitions.
+- **Styled text** (from `references/ultraviolet/styled.go`): ANSI-aware styled string helper (wrap vs truncate with tail) using wcwidth/grapheme width (`StyledString`/`printString`/`ReadStyle`/`ReadLink`) for logs, viewports, and help truncation.
+- **Key normalization** (from `references/ultraviolet/key_table.go`): central mapping that reconciles Ctrl+I vs Tab, Backspace/Delete, Shift+Tab, keypad/app-mode sequences before routing to Bubble Tea models.
+- **Terminal lifecycle**: raw → start → alt-screen → shutdown sequence from `references/ultraviolet/TUTORIAL.md`, ready for inline/alt-screen toggles.
+- **Terminal lifecycle**: raw → start → alt-screen → shutdown sequence from `references/ultraviolet/TUTORIAL.md`, ready for inline/alt-screen toggles.
 
 ### Composites
 - **PageShell**: wraps every view with consistent top/bottom padding plus TitleBar + body + HelpBar.
@@ -93,6 +99,11 @@ Keep data flow and hotkeys unchanged; swap rendering to the kit above.
 - Colors, padding, and selection highlights match the Glow-derived palette across every screen.
 - Existing keybindings and behaviors continue to work (list navigation, filters, focus modes, resume copy, quit semantics).
 - `make all` succeeds.
+- Border styles are chosen from the shared variants; there are no bespoke lipgloss border structs in view code.
+- All width/height calculations rely on `ContentArea`/`ContentWidth` + `Split*Rect` helpers; bespoke `width - padding` math is removed from panes.
+- Viewport/log/help text uses the styled string helper (wcwidth/grapheme aware) for wrap/truncate; no manual rune/len trimming.
+- Key handling goes through the shared normalization helper before view-specific logic.
+- Ultraviolet submodule is present at `references/ultraviolet` and pinned; helpers in `internal/tui/components` match the corresponding upstream files noted above.
 
 ### Responsive sizing rules (required)
 - Every pane derives its layout from `tea.WindowSizeMsg`; no hard-coded heights or width magic numbers remain.

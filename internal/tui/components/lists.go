@@ -20,7 +20,7 @@ func MenuList(width int, items []MenuItem, selected int) string {
 	if len(items) == 0 {
 		return ""
 	}
-	bodyWidth := contentWidth(width)
+	bodyWidth := ContentWidth(width)
 	lines := make([]string, 0, len(items)*2)
 	for i, item := range items {
 		cursor := "  "

@@ -15,8 +15,16 @@ func viewWidth(width int) int {
 	return width
 }
 
-func contentWidth(width int) int {
-	w := viewWidth(width) - theme.ViewHorizontalPadding*2
+// ViewWidth clamps a provided width to a sensible default when the terminal
+// reports zero during initialization.
+func ViewWidth(width int) int {
+	return viewWidth(width)
+}
+
+// ContentWidth returns the usable width once horizontal padding is removed and
+// enforces a small minimum so cards don’t collapse.
+func ContentWidth(width int) int {
+	w := ViewWidth(width) - theme.ViewHorizontalPadding*2
 	if w < 24 {
 		return 24
 	}
@@ -35,4 +43,18 @@ func PadToHeight(view string, minHeight int) string {
 	}
 	padding := strings.Repeat("\n", minHeight-height)
 	return view + padding
+}
+
+// ClampHeight trims the rendered view to at most the given height. This
+// prevents oversized layouts from pushing important chrome (like spinners) off
+// screen on small terminals.
+func ClampHeight(view string, maxHeight int) string {
+	if maxHeight <= 0 {
+		return view
+	}
+	lines := strings.Split(view, "\n")
+	if len(lines) <= maxHeight {
+		return view
+	}
+	return strings.Join(lines[:maxHeight], "\n")
 }

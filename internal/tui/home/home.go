@@ -80,6 +80,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, tea.ClearScreen
 	case tea.KeyMsg:
+		msg = components.NormalizeKey(msg)
 		var cmd tea.Cmd
 		switch msg.String() {
 		case "ctrl+c", "q":
