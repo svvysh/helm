@@ -1,0 +1,41 @@
+name: Setup Rust
+description: Install Rust toolchain with optional components and caching.
+inputs:
+  toolchain:
+    description: Rust toolchain (channel or version)
+    required: false
+    default: stable
+  components:
+    description: Comma-separated rustup components to install
+    required: false
+    default: rustfmt, clippy
+  cache:
+    description: Enable cargo cache
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install Rust
+      shell: bash
+      run: |
+        rustup update ${{ inputs.toolchain }} --no-self-update
+        rustup default ${{ inputs.toolchain }}
+        IFS=',' read -ra comps <<< "${{ inputs.components }}"
+        for c in "${comps[@]}"; do
+          rustup component add "${c// /}"
+        done
+    - name: Cache cargo registry
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ inputs.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+    - name: Show versions
+      shell: bash
+      run: |
+        rustc --version
+        cargo --version
