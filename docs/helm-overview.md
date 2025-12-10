@@ -5,7 +5,7 @@ A language-agnostic, comprehensive specification of Helm’s terminal user inter
 ## Purpose & scope
 - Helm is a cross-project spec runner. It discovers `spec-*` folders, orchestrates Codex worker/verifier runs, scaffolds new workspaces, splits large specs, and shows portfolio status.
 - The multi-pane TUI opens when running bare `helm`; subcommands (`helm run`, `helm spec`, `helm status`, `helm scaffold`, `helm settings`) launch the corresponding single-flow TUIs directly.
-- The TUI is display-only/stateful; compute is delegated to existing runner/split/scaffold logic. No mouse-only actions—keyboard-first with optional mouse scroll in viewports.
+- The full behavior described here must be implemented inside this codebase—there is no external pre-existing Helm logic to rely on. Implement discovery, runner, split, scaffold, settings, acceptance command resolution, and dependency computation as described. No mouse-only actions—keyboard-first with optional mouse scroll in viewports.
 
 ## Global data & configuration
 - **Specs root:** Default `specs/`; resolved via `helm.config.json` (repo-scoped) plus user settings fallback. Resolved with `config.ResolveSpecsRoot(root, settings.SpecsRoot)`.
@@ -165,4 +165,3 @@ Steps: intro → mode picker → acceptance commands → options → confirm →
 4) **Inspecting readiness:** From Home select Status → view counts and dependency graph → focus runnable-only or a subtree → reload after external changes (`r`).
 5) **Adjusting settings:** Run `helm settings` → edit specs root/mode/attempts/commands/model choices → enter on Save; `esc` to cancel without persistence.
 6) **Scaffolding later:** Run `helm scaffold` to regenerate files (e.g., new repo) or reset by deleting `helm.config.json` then re-run `helm`.
-

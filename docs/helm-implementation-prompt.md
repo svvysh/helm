@@ -8,9 +8,9 @@ You are tasked with implementing the complete Helm Terminal UI in Rust using Rat
 3. `docs/ratatui-references.md` — lists reference TUIs and widgets to reuse; submodules live in `references/`.
 
 ## Core directives
-- Implement **all screens and flows**: Home, Run (list/running/result), Breakdown/Spec Split (intro/input/running/done), Status Overview, Scaffold Wizard, Settings.
-- **Reuse, don’t reinvent UI:** copy/port widgets/layouts/patterns from reference apps in `references/` as mapped in `docs/ratatui-references.md` (MenuList, HelpBar, Modal, ViewportCard/logs, badges, summary bar, responsive splits, clipboard helper, etc.).
-- Keep business logic untouched: call existing Helm discovery/runner/split/scaffold/settings code; TUI is display/stateful only.
+- Implement **all screens and flows end-to-end**: Home, Run (list/running/result), Breakdown/Spec Split (intro/input/running/done), Status Overview, Scaffold Wizard, Settings.
+- **Copy/port widgets/layouts/patterns** from reference apps in `references/` as mapped in `docs/ratatui-references.md` (MenuList, HelpBar, Modal, ViewportCard/logs, badges, summary bar, responsive splits, clipboard helper, etc.). Bring the code into this repo; do not leave stubs.
+- There is **no pre-existing Helm logic to call**. Implement the discovery/runner/split/scaffold/settings/data handling described in `docs/helm-overview.md` entirely within this codebase (you may structure it as services/modules, but they must be real, not mocks). The TUI should be backed by these implementations, not placeholders.
 - Keyboard-first; mouse only for scrolling viewports. Alt-screen where specified.
 - Maintain accessibility/responsiveness rules (min width 24 cols, help bar always visible, no color-only cues).
 - Implement key normalization, kill/unmet-deps double-confirm, resume chip/clipboard flow.

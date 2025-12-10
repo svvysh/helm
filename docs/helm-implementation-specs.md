@@ -5,10 +5,10 @@ This document translates `docs/helm-overview.md` and `docs/ratatui-references.md
 
 ## 1) Goals & Scope
 - Ship the complete Helm terminal UI (Home, Run, Breakdown/Spec Split, Status, Scaffold, Settings) as described in `helm-overview.md`.
-- Maximize reuse of proven Ratatui components/patterns from the reference deck to avoid hand-rolling widgets.
+- Maximize reuse of proven Ratatui components/patterns from the reference deck to avoid hand-rolling widgets—copy/port them into this repo rather than leaving stubs.
 - Provide deterministic developer ergonomics: Makefile commands, GitHub Actions (setup composite action + workflows for CI and Release).
 - Keyboard-first; mouse only for viewport scroll. Alt-screen everywhere except where explicitly display-only.
-- No business-logic changes: UI is a client on top of existing runner/split/scaffold/settings logic.
+- Implement **all Helm behavior in this repository**: discovery, dependency computation, runner/split streaming, scaffold workspace creation, settings persistence, acceptance command resolution. There is no external “existing logic” to depend on.
 
 ## 2) Non-Goals
 - Do not redesign flows or shortcut validation rules defined in `helm-overview.md`.
@@ -59,6 +59,7 @@ This document translates `docs/helm-overview.md` and `docs/ratatui-references.md
 - User settings `~/.helm/settings.json` (or `$HELM_CONFIG_DIR/settings.json`): specsRoot, mode, defaultMaxAttempts, acceptanceCommands, Codex model+reasoning per flow.
 - Spec metadata per `metadata.json`; dependency state via `specs.ComputeDependencyState` (fields `CanRun`, `UnmetDeps`).
 - Acceptance commands resolution order: repo config → scaffold defaults → user settings.
+- All of the above must be implemented in this codebase; there is no upstream Helm library providing these functions.
 
 ## 7) Screen-by-Screen Build Checklist
 For each screen, follow the behavior in `helm-overview.md`; the items below translate to implementation tasks with reference mappings.
@@ -128,12 +129,12 @@ For each screen, follow the behavior in `helm-overview.md`; the items below tran
 - No color-only cues: badges include text; warnings have text labels.
 - Recompute layout on every terminal resize.
 
-## 10) Architecture & State
 - App state machine: enums for Screen + SubPhase (e.g., RunList/RunStreaming/RunResult, SplitIntro/SplitInput/SplitRunning/SplitDone).
 - Use shared `PageShell` wrapper that accepts title, body, help items, optional flash/modal overlay.
 - Event loop from `crates-tui` template with tick rate; spawn async tasks for runner/split to stream logs over channels.
 - Shared models: `SpecRow` (metadata + computed dep state), `ResumeState`, `Flash`, `ModalState`, `ViewportState`.
 - Router: bare `helm` enters Home; subcommands jump directly to their screen; all respect global quit semantics.
+- All data/logic modules (config, discovery, dependency state, runner, split, scaffold, settings) must be implemented here; no mocks or placeholders in the final product.
 
 ## 11) Makefile (to be created)
 Create `Makefile` with phony targets:
